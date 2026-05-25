@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Dash Legacy (SVG, responsivo)</title>
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body>
+  <!-- SHIFT overlay fullscreen -->
+  <div id="shiftOverlay" class="shiftOverlay">
+    <div class="label">SHIFT</div>
+  </div>
+
+  <div class="app">
+    <div class="left">
+      <div class="rpmWrap" id="rpmWrap">
+        <svg id="rpmSvg" class="rpmSvg" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet" aria-label="RPM Gauge">
+          <defs>
+            <!-- Gradiente invertido: começa AZUL e termina LARANJA/VERMELHO -->
+            <linearGradient id="rpmGrad" gradientUnits="userSpaceOnUse" x1="340" y1="0" x2="0" y2="0">
+              <stop offset="0%"  stop-color="#06A6F0"/>
+              <stop offset="60%" stop-color="#FFC400"/>
+              <stop offset="100%" stop-color="#FF5A2A"/>
+            </linearGradient>
+          </defs>
+
+          <rect x="0" y="0" width="340" height="340" fill="#000"></rect>
+
+          <g id="rpmArcGroup">
+            <circle id="rpmArcBg" class="arcBg" cx="170" cy="185" r="130" stroke-width="16"></circle>
+            <circle id="rpmArcVal" class="arcVal" cx="170" cy="185" r="130" stroke-width="16"></circle>
+          </g>
+        </svg>
+
+        <div id="rpmTip" class="rpmTip"></div>
+        <div class="rpmMarks" id="rpmMarks"></div>
+
+        <div class="rpmCenter" id="rpmCenter">
+          <span id="rpmText" class="rpmNum">0</span>
+          <div class="rpmDots" id="rpmDots"></div>
+          <div class="rpmUnit" id="rpmUnit">RPM</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="tiles" id="tiles"></div>
+    </div>
+  </div>
+
+  <!--
+    Scripts em ordem de dependência (scripts clássicos, sem ES modules,
+    para manter compatibilidade com Safari antigo de iPad):
+      1. config    — namespace DASH + constantes
+      2. helpers   — utilitários puros
+      3. telemetry — estados + mock + mapeamento do servidor
+      4. tiles     — construção dos cartões
+      5. gauge     — medidor de RPM (SVG)
+      6. viewport  — --vh e escala dos tiles
+      7. websocket — conexão / reconexão / fallback mock
+      8. main      — loop, render, eventos e bootstrap
+  -->
+  <script src="js/config.js"></script>
+  <script src="js/helpers.js"></script>
+  <script src="js/telemetry.js"></script>
+  <script src="js/tiles.js"></script>
+  <script src="js/gauge.js"></script>
+  <script src="js/viewport.js"></script>
+  <script src="js/websocket.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
