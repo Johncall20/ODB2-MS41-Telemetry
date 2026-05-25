@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3-blue?logo=python&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES6-yellow?logo=javascript&logoColor=black)
-![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-Zero%20W-C51A4A?logo=raspberrypi&logoColor=white)
+![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-Zero%20-C51A4A?logo=raspberrypi&logoColor=white)
 ![BLE](https://img.shields.io/badge/Bluetooth-LE-0082FC?logo=bluetooth&logoColor=white)
 
 Trabalho de Conclusão de Curso (TCC) do curso de Ciência da Computação do **Centro Universitário do Instituto Mauá de Tecnologia (IMT)**.
@@ -88,7 +88,7 @@ Este projeto realiza a comunicação com a unidade de controle eletrônico (ECU)
 
 ##  Hardware Necessário
 
-- Raspberry Pi Zero W (ou outra placa com suporte a *Bluetooth Low Energy*)
+- Raspberry Pi Zero (ou outra placa com suporte a *Bluetooth Low Energy*)
 - Adaptador ELM327 com comunicação Bluetooth
 - Veículo com conector OBD-II
 
