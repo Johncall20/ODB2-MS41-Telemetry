@@ -173,7 +173,7 @@ A interface conecta-se automaticamente ao servidor por WebSocket e passa a exibi
 
 ---
 
-## ⚙️ Variáveis de Ambiente
+## Variáveis de Ambiente
 
 Todas opcionais, com valores padrão definidos no código.
 
@@ -202,7 +202,7 @@ A comunicação entre a interface e o servidor ocorre por meio de um **WebSocket
 
 ---
 
-## ⚙️ Funcionamento
+## Funcionamento
 
 O sistema opera em **duas etapas principais**:
 
