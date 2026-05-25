@@ -11,7 +11,7 @@ Trabalho de Conclusão de Curso (TCC) do curso de Ciência da Computação do **
 
 ---
 
-## 📑 Sumário
+##  Sumário
 
 - [Visão Geral](#-visão-geral)
 - [Objetivos](#-objetivos)
@@ -99,7 +99,6 @@ Este projeto realiza a comunicação com a unidade de controle eletrônico (ECU)
 ```
 .
 ├── Arquivos/                 # Diagramas em PDF
-├── elm_pid_request.py        # Script de leitura dos parâmetros via terminal (uso isolado)
 ├── server/
 │   ├── main.py               # Servidor: leitura BLE + HTTP + WebSocket
 │   └── requirements.txt      # Dependências do servidor
