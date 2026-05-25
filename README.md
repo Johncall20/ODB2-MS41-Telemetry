@@ -111,41 +111,16 @@ Este projeto realiza a comunicação com a unidade de controle eletrônico (ECU)
 
 O projeto possui **dois modos de uso**:
 
-- **`elm_pid_request.py`** — realiza a leitura dos parâmetros e os exibe diretamente no terminal. Útil para testes isolados da comunicação.
-- **`server/main.py`** — integra a leitura ao servidor web e ao *streaming* de dados em tempo real para a interface de visualização.
+- **`server/main.py`** — ealiza a leitura dos parâmetros e integra ao servidor web e ao *streaming* de dados em tempo real para a interface de visualização.
 
 ---
 
 ##  Como Rodar
 
-### Leitura via terminal (uso isolado)
-
-Para testar apenas a comunicação e a leitura dos parâmetros, instale a biblioteca necessária:
-
-```bash
-pip install bleak
-```
-
-Conecte o adaptador ELM327 ao conector OBD-II do veículo, ligue a ignição e execute:
-
-```bash
-python elm_pid_request.py
-```
-
-Os valores lidos serão exibidos diretamente no terminal.
-
-### Aplicação completa (servidor + dashboard)
-
-Para executar o sistema completo, com a interface de visualização em tempo real, instale as dependências do servidor:
+Para executar o sistema, com a interface de visualização em tempo real, instale as dependências do servidor:
 
 ```bash
 pip install -r server/requirements.txt
-```
-
-Caso prefira instalar manualmente:
-
-```bash
-pip install aiohttp bleak
 ```
 
 Conecte o adaptador ELM327 ao conector OBD-II do veículo e ligue a ignição. Por padrão, o sistema procura automaticamente um dispositivo Bluetooth com o nome `OBDII`. Caso o seu adaptador utilize outro nome — ou caso queira informar diretamente o endereço MAC do adaptador, evitando a etapa de busca — defina as variáveis de ambiente antes de executar:
