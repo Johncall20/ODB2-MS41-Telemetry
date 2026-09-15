@@ -1,0 +1,5 @@
+/* Os rotulos sao frases ("Última sessão, mais recente primeiro"), nao
+   palavras soltas: precisa de mais largura que um select comum. */
+.selecao {
+  min-width: 280px;
+}

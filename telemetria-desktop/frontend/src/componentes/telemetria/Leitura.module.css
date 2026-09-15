@@ -1,0 +1,64 @@
+/*
+  O card de uma leitura do painel ao vivo. Tem um estado apagado, para a
+  leitura que a central nao respondeu - e o que impede um numero velho de
+  parecer medicao nova.
+*/
+
+.numero {
+  margin-top: 10px;
+  font-size: 40px;
+  line-height: 40px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.unidade {
+  margin-left: 8px;
+  font-size: 18px;
+  color: var(--apagado);
+}
+
+.largo {
+  grid-column: span 2;
+}
+
+/*
+  Leitura que o firmware nao conseguiu atualizar neste ciclo. O numero sai
+  de cena e o rotulo diz o motivo - nunca o ultimo valor conhecido.
+*/
+.parado .numero {
+  color: var(--fraco);
+}
+
+.sem-resposta {
+  color: var(--risco);
+}
+
+/* ----------------------------------------------------------------- giro */
+
+.blocos {
+  display: flex;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.bloco {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--segmento-off);
+}
+
+.bloco-verde {
+  background: var(--ok);
+}
+
+.bloco-ambar {
+  background: var(--ambar);
+}
+
+.bloco-vermelho {
+  background: var(--risco);
+}

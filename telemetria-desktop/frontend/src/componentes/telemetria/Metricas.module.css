@@ -1,0 +1,167 @@
+/*
+  A faixa de metricas da tela de Analise: quatro cards, um por categoria.
+
+  Travessao apagado significa "nao ha leitura para dizer" - e por isso que
+  o valor vazio tem cor propria, para nao ser lido como medicao zero.
+*/
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.grupo {
+  gap: 2px;
+}
+
+.titulo {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--texto);
+}
+
+.subtitulo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--apagado);
+}
+
+.linha {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--linha);
+}
+
+.linha:last-child {
+  border-bottom: 0;
+}
+
+.rotulo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 15px;
+  color: var(--apagado);
+}
+
+.nota {
+  font-size: 12px;
+  color: var(--fraco);
+  font-weight: 400;
+}
+
+.valor {
+  flex: none;
+  font-size: 17px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Travessao = nao ha leitura para dizer. Apagado, para nao ser lido como
+   medicao de valor zero. */
+.valor-vazio {
+  color: var(--fraco);
+}
+
+/* -------------------------------------------------------------- barras */
+
+.barras {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 4px 0 10px;
+}
+
+.barra-linha {
+  display: grid;
+  grid-template-columns: 96px 1fr 74px;
+  align-items: center;
+  gap: 10px;
+}
+
+.barra-rotulo {
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+.barra-trilho {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--segmento-off);
+  overflow: hidden;
+}
+
+.barra-cheia {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--ambar);
+}
+
+.barra-valor {
+  font-size: 13px;
+  color: var(--apagado);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------- tabelinha */
+
+.tabelinha {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.tabelinha th {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--linha);
+  color: var(--fraco);
+  font-weight: 400;
+  text-align: right;
+}
+
+.tabelinha th:first-child {
+  text-align: left;
+}
+
+.tabelinha td {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--linha);
+  color: var(--texto);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabelinha td:first-child {
+  text-align: left;
+  color: var(--apagado);
+}
+
+.tabelinha tr:last-child td {
+  border-bottom: 0;
+}
+
+.vazio-nota {
+  margin: 4px 0 8px;
+  font-size: 14px;
+  color: var(--fraco);
+  line-height: 1.4;
+}
+
+@media (max-width: 1100px) {
+  .grade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

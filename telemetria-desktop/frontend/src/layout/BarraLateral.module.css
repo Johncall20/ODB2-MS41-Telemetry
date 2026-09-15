@@ -1,0 +1,116 @@
+/*
+  A navegacao fixa de 288px (node 2:88), com o rodape do usuario embaixo.
+*/
+
+.barra {
+  flex: none;
+  width: var(--barra-largura);
+  display: flex;
+  flex-direction: column;
+  padding: 34px 0;
+  border-right: 1px solid var(--linha);
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 0 30px 38px;
+}
+
+/* O simbolo esta espelhado no eixo vertical no Figma (rotate 180 + flip X). */
+.logo {
+  display: block;
+  width: 54px;
+  height: 31px;
+  transform: scaleY(-1);
+}
+
+.nome {
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.22px;
+  color: var(--ambar);
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 30px;
+  font-size: 17px;
+  color: var(--apagado);
+  text-decoration: none;
+}
+
+.link:hover {
+  color: var(--texto);
+  background: var(--realce);
+}
+
+.link-ativo {
+  color: var(--texto);
+  background: var(--realce);
+  box-shadow: inset 2px 0 0 0 var(--ambar);
+}
+
+.link:focus-visible {
+  outline-offset: -2px;
+}
+
+/* O icone da lucide ja herda currentColor: acende junto com o texto do
+   link ativo, sem regra extra. */
+.icone {
+  flex: none;
+}
+
+.vao {
+  flex: 1 1 auto;
+}
+
+.rodape {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 24px 30px;
+  border-top: 1px solid var(--linha);
+}
+
+.avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  border: 1px solid var(--linha);
+  background: var(--fundo-alto);
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+.usuario {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.usuario-nome,
+.usuario-papel {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.usuario-nome {
+  font-size: 16px;
+  color: var(--texto);
+}
+
+.usuario-papel {
+  font-size: 15px;
+  color: var(--apagado);
+}

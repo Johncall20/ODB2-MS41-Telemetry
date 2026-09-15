@@ -1,0 +1,24 @@
+/*
+  Reset e elementos globais. So seletor de elemento e de id da raiz - nada
+  de classe, que e trabalho dos modules.
+*/
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#raiz {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: var(--fonte);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,220 @@
+/*
+  Node 5:1365. Dois cards lado a lado: escolha do formato e do conteudo a
+  esquerda, previa a direita.
+*/
+
+.exportar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 36px;
+  align-items: start;
+}
+
+.rotulo-secao {
+  margin-top: 30px;
+}
+
+.nota {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--fraco);
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------- formatos */
+
+.formatos {
+  display: flex;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.formato {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 104px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: rgba(242, 242, 240, 0.02);
+  color: var(--apagado);
+  font: inherit;
+  cursor: pointer;
+}
+
+.formato:hover {
+  border-color: var(--apagado);
+}
+
+.formato-ativo {
+  border-color: var(--ambar);
+  background: rgba(255, 138, 31, 0.09);
+}
+
+.formato-nome {
+  font-size: 19px;
+  color: inherit;
+}
+
+.formato-ativo .formato-nome {
+  color: var(--ambar);
+}
+
+.formato-nota {
+  font-size: 14px;
+  color: var(--fraco);
+}
+
+/* --------------------------------------------------------------- opcoes */
+
+.opcoes {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.opcoes li + li {
+  border-top: 1px solid var(--linha);
+}
+
+.opcao {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 0;
+  font-size: 17px;
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.opcao-inativa {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* A caixa desenhada substitui o checkbox nativo, que fica so como alvo de
+   teclado e leitor de tela. */
+.opcao input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/*
+  O visto e um icone da lucide dentro da caixa, herdando currentColor.
+  Desmarcada, a cor e transparente: o icone continua no DOM mas nao
+  aparece, entao marcar e desmarcar nao mexe no layout.
+*/
+.caixa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--linha);
+  border-radius: 4px;
+  color: transparent;
+}
+
+.opcao input:checked + .caixa {
+  border-color: var(--ambar);
+  background-color: var(--ambar);
+  color: var(--ambar-contraste);
+}
+
+.opcao input:focus-visible + .caixa {
+  outline: 2px solid var(--ambar);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------- previa */
+
+.previa {
+  margin-top: 16px;
+  padding: 26px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: #0c1220;
+}
+
+.previa-titulo {
+  margin: 0;
+  font-size: 19px;
+  color: var(--texto);
+}
+
+.previa-legenda {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+.previa-risco {
+  height: 1px;
+  margin: 18px 0 8px;
+  background: var(--linha);
+}
+
+.previa-linha {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  font-size: 15px;
+  color: var(--apagado);
+}
+
+/* Antes era `.previa-linha .mono`, descendente entre modules diferentes. */
+.previa-valor {
+  font-family: var(--fonte-mono);
+  color: var(--texto);
+}
+
+/*
+  A previa dos graficos: miniatura desenhada com a serie mais a linha que
+  diz o que entra no PDF. Aqui havia dois retangulos de degrade herdados de
+  containers vazios do Figma - pareciam grafico e nao saiam de dado nenhum.
+*/
+.previa-graficos {
+  margin-top: 16px;
+  /* A miniatura pega a cor por currentColor, como o grafico da Analise. */
+  color: var(--ambar);
+}
+
+.previa-graficos-nota {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--apagado);
+  line-height: 1.5;
+}
+
+.previa-graficos-dica {
+  flex: none;
+  font-size: 13px;
+  color: var(--fraco);
+}
+
+.acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 26px;
+}
+
+@media (max-width: 1100px) {
+  .exportar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

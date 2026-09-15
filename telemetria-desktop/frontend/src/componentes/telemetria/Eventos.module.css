@@ -1,0 +1,42 @@
+/*
+  A lista de eventos do painel ao vivo, com o mais recente no topo.
+*/
+
+.eventos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.evento {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--linha);
+}
+
+.evento:last-child {
+  border-bottom: 0;
+}
+
+.marca {
+  flex: none;
+  width: 74px;
+  font-family: var(--fonte-mono);
+  font-size: 15px;
+  color: var(--apagado);
+  font-variant-numeric: tabular-nums;
+}
+
+.msg {
+  font-size: 16px;
+  color: var(--apagado);
+  min-width: 0;
+}
+
+.vazio {
+  margin: 14px 0 0;
+  font-size: 16px;
+  color: var(--fraco);
+}

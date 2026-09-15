@@ -1,0 +1,94 @@
+/* Node 5:529: card centrado com o resumo da sessao encerrada. */
+
+.centralizado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+}
+
+.cartao {
+  width: 760px;
+  max-width: 100%;
+  padding: 44px;
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  background: var(--fundo-alto);
+}
+
+.selo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 26px;
+  background: rgba(63, 143, 92, 0.16);
+}
+
+/* Icone da lucide: a cor vai em color, nao em background. */
+.selo-icone {
+  color: var(--ok);
+}
+
+.titulo {
+  margin: 22px 0 0;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.28px;
+  color: var(--texto);
+}
+
+/* Legenda da sessao com a etiqueta de veiculo arquivado ao lado. */
+.legenda-linha {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.metricas {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 34px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: var(--linha);
+  overflow: hidden;
+}
+
+.metrica {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 22px;
+  background: var(--fundo-alto);
+}
+
+.metrica-valor {
+  margin-top: 8px;
+  font-size: 24px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+
+.secao {
+  margin: 30px 0 6px;
+  font-size: 15px;
+  color: var(--apagado);
+}
+
+.acoes {
+  display: flex;
+  gap: 14px;
+  margin-top: 36px;
+}
+
+@media (max-width: 900px) {
+  .metricas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cartao {
+    padding: 28px;
+  }
+}

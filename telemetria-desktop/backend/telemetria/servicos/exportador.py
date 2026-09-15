@@ -1,0 +1,491 @@
+"""
+Resumo da sessao e as saidas: CSV, JSON e o PDF com graficos do matplotlib.
+Mexe aqui quem mudar o que a exportacao contem ou como o relatorio parece.
+
+Campo com o bit de `valid` apagado sai VAZIO, nunca com o ultimo valor.
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import json
+from typing import Sequence
+
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.utils import ImageReader
+from reportlab.platypus import (
+    Image,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+from ..repositorios import amostras as repo_amostras
+from ..repositorios import sessoes as repo_sessoes
+from ..repositorios import veiculos as repo_veiculos
+from . import metricas
+
+COLUNAS = ["rpm", "ect", "iat", "vbat", "tps", "vanos", "vss"]
+
+
+def _montar(sessao, total, completas, picos: dict, eventos: int) -> dict:
+    """A forma do resumo, montada uma vez so.
+
+    Os dois caminhos tem de devolver as MESMAS chaves, senao a tela muda
+    conforme a sessao esteja consolidada ou nao.
+    """
+    return {
+        "sessao_id": sessao.id,
+        "status": sessao.status.value,
+        "iniciada_em": sessao.iniciada_em,
+        "encerrada_em": sessao.encerrada_em,
+        "duracao_s": round(sessao.duracao_s(), 1),
+        "amostras": total,
+        "amostras_completas": completas,
+        "integridade_pct": round(100 * completas / total, 1) if total else 0.0,
+        "rpm_pico": picos["rpm"],
+        "vss_pico": picos["vss"],
+        "ect_pico": picos["ect"],
+        "vbat_min": picos["vbat"],
+        "eventos": eventos,
+    }
+
+
+def _resumo_gravado(sessao, eventos: int) -> dict:
+    """Resumo lido da propria linha de Sessao. Nao abre a tabela de
+    amostras - e por isso que a listagem pode chamar isto por linha."""
+    return _montar(
+        sessao,
+        sessao.total_amostras or 0,
+        sessao.amostras_completas or 0,
+        {
+            "rpm": sessao.rpm_pico,
+            "vss": sessao.vss_pico,
+            "ect": sessao.ect_pico,
+            "vbat": sessao.vbat_min,
+        },
+        eventos,
+    )
+
+
+def _resumo_calculado(sessao, eventos: int) -> dict:
+    """Resumo apurado sobre as amostras (sessao ATIVA ou antiga).
+
+    Carrega a serie inteira: nao use em laco.
+    """
+    amostras = repo_amostras.listar(sessao.id)
+
+    def pico(campo: str):
+        vals = [getattr(a, campo) for a in amostras if a.valido(campo)]
+        return max(vals) if vals else None
+
+    return _montar(
+        sessao,
+        len(amostras),
+        sum(1 for a in amostras if a.completa()),
+        {
+            "rpm": pico("rpm"),
+            "vss": pico("vss"),
+            "ect": pico("ect"),
+            "vbat": min((a.vbat for a in amostras if a.valido("vbat")), default=None),
+        },
+        eventos,
+    )
+
+
+def resumo_de(sessao, eventos: Sequence) -> dict:
+    """Resumo de uma sessao e eventos que quem chama ja carregou.
+
+    Com a sessao consolidada nao sai consulta nenhuma daqui - e o que a
+    listagem usa.
+    """
+    if sessao.consolidada():
+        return _resumo_gravado(sessao, len(eventos))
+    return _resumo_calculado(sessao, len(eventos))
+
+
+def resumo(sessao_id: int) -> dict:
+    """Resumo pelo id, para quem tem so o numero da sessao.
+
+    Sessao encerrada e consolidada responde com os campos gravados no
+    encerramento; ATIVA e apurada na hora, sobre as amostras.
+    """
+    sessao = repo_sessoes.buscar(sessao_id)
+    if sessao is None:
+        return {}
+    eventos = repo_sessoes.contar_eventos(sessao_id)
+    if sessao.consolidada():
+        return _resumo_gravado(sessao, eventos)
+    return _resumo_calculado(sessao, eventos)
+
+
+def para_csv(sessao_id: int) -> str:
+    """CSV da sessao, uma linha por amostra. Campo sem leitura sai vazio."""
+    saida = io.StringIO()
+    w = csv.writer(saida)
+    w.writerow(["recebida_em", "t_ms"] + COLUNAS + ["valid"])
+    for a in repo_amostras.listar(sessao_id):
+        linha = [a.recebida_em.isoformat(timespec="milliseconds"), a.t_ms]
+        for c in COLUNAS:
+            linha.append(getattr(a, c) if a.valido(c) else "")
+        linha.append(a.valid)
+        w.writerow(linha)
+    return saida.getvalue()
+
+
+def para_json(sessao_id: int) -> str:
+    """A sessao inteira em JSON: veiculo, resumo, metricas, serie e eventos.
+
+    E o formato de quem vai reprocessar a gravacao fora do app, entao vai
+    tudo - inclusive o `valid` cru de cada amostra.
+    """
+    sessao = repo_sessoes.buscar(sessao_id)
+    amostras = repo_amostras.listar(sessao_id)
+    eventos = repo_sessoes.listar_eventos(sessao_id)
+    # Pelo id, e nao por sessao.veiculo: o objeto vem desanexado do
+    # repositorio e relacao preguicosa nao carrega mais.
+    veiculo = repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True) if sessao else None
+    dados = resumo(sessao_id)
+    pacote = {
+        "veiculo": veiculo.model_dump() if veiculo else None,
+        "sessao": sessao.model_dump() if sessao else None,
+        "resumo": dados,
+        # A serie ja esta carregada, entao as metricas saem de graca.
+        "metricas": metricas.calcular(amostras, dados.get("duracao_s")),
+        "amostras": [a.model_dump() for a in amostras],
+        "eventos": [e.model_dump() for e in eventos],
+    }
+    return json.dumps(pacote, default=str, ensure_ascii=False, indent=2)
+
+
+# --------------------------------------------------------------------- pdf
+
+SECOES_PADRAO = ("resumo", "graficos", "eventos")
+SECOES_VALIDAS = ("resumo", "graficos", "eventos", "amostras")
+
+# Series desenhadas no relatorio: campo do firmware, titulo e unidade.
+SERIES_PDF = (
+    ("rpm", "RPM", ""),
+    ("vss", "Velocidade", "km/h"),
+    ("ect", "Temperatura do motor", "°C"),
+)
+
+ROTULO_EVENTO_PDF = {
+    "INICIO_SESSAO": "Inicio da sessao",
+    "FIM_SESSAO": "Fim da sessao",
+    "SHIFT_LIGHT": "Shift light",
+    "RPM_ALTO": "Giro acima do limite",
+    "TEMP_ALTA": "Temperatura alta",
+    "BATERIA_BAIXA": "Bateria baixa",
+    "PERDA_CONEXAO": "Perda de conexao",
+    "LEITURA_INCOMPLETA": "Leitura incompleta",
+}
+
+
+def _mmss(segundos) -> str:
+    if segundos is None:
+        return "-"
+    total = int(round(segundos))
+    return f"{total // 60:02d}min {total % 60:02d}s"
+
+
+def _num(valor, sufixo: str = "") -> str:
+    """Numero para o relatorio. None vira travessao, nunca zero - zero
+    seria inventar uma medicao que a central nao deu."""
+    if valor is None:
+        return "—"
+    if isinstance(valor, float):
+        texto = f"{valor:,.2f}".rstrip("0").rstrip(".")
+    else:
+        texto = f"{valor:,}"
+    texto = texto.replace(",", ".")
+    return f"{texto} {sufixo}".strip()
+
+
+# Cores do relatorio. O PDF sai em papel branco, entao a paleta e a clara -
+# nao os tokens escuros da tela.
+LARANJA = "#D95C0F"
+TINTA = "#1A1A1A"
+CINZA = "#777777"
+GRADE = "#DDDDDD"
+
+# Renderiza acima do tamanho final e deixa o PDF reduzir, senao a linha
+# sai serrilhada no zoom e na impressao.
+DPI_GRAFICO = 200
+
+
+def _mmss_curto(segundos: float) -> str:
+    """mm:ss para os ticks do eixo de tempo. O _mmss() longo ("01min 30s")
+    nao cabe repetido embaixo do grafico."""
+    total = max(0, int(round(segundos)))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _serie_para_grafico(amostras, campo: str, inicio):
+    """Tempo decorrido e valores de um campo, para desenhar.
+
+    Amostra invalida entra como NaN, que interrompe a linha. X e tempo de
+    verdade, nao indice de amostra.
+    """
+    xs, ys = [], []
+    for a in amostras:
+        xs.append((a.recebida_em - inicio).total_seconds())
+        ys.append(getattr(a, campo) if a.valido(campo) else float("nan"))
+    return xs, ys
+
+
+def _png_da_serie(campo, titulo, unidade, amostras, inicio, largura_pt, altura_pt=132):
+    """Uma serie como PNG, ou None se o campo nao teve leitura valida."""
+    xs, ys = _serie_para_grafico(amostras, campo, inicio)
+    validos = [v for v in ys if v == v]  # NaN != NaN
+    if not validos:
+        return None
+
+    minimo, maximo = min(validos), max(validos)
+    if maximo == minimo:
+        # Serie constante: abre um respiro para a linha nao colar na borda.
+        minimo -= 1
+        maximo += 1
+
+    # 1 pt = 1/72 pol; a figura nasce do tamanho que vai ocupar no PDF.
+    figura = Figure(figsize=(largura_pt / 72, altura_pt / 72), dpi=DPI_GRAFICO)
+    FigureCanvasAgg(figura)
+    eixo = figura.add_subplot(111)
+
+    eixo.plot(xs, ys, color=LARANJA, linewidth=1.1, solid_joinstyle="round")
+    eixo.fill_between(xs, minimo, ys, color=LARANJA, alpha=0.12, linewidth=0)
+
+    eixo.set_ylim(minimo, maximo)
+    eixo.set_xlim(min(xs, default=0), max(xs, default=1))
+    eixo.xaxis.set_major_formatter(FuncFormatter(lambda v, _: _mmss_curto(v)))
+    eixo.tick_params(labelsize=6.5, colors=CINZA, length=2, width=0.4)
+    eixo.grid(axis="y", color=GRADE, linewidth=0.4)
+    eixo.set_axisbelow(True)
+    for lado, visivel in (("left", True), ("bottom", True), ("top", False), ("right", False)):
+        eixo.spines[lado].set_visible(visivel)
+        if visivel:
+            eixo.spines[lado].set_color(GRADE)
+            eixo.spines[lado].set_linewidth(0.4)
+
+    faixa = f"{_num(minimo)} – {_num(maximo, unidade)}"
+    eixo.set_title(titulo, fontsize=8, color=TINTA, loc="left", pad=6)
+    eixo.text(
+        1.0, 1.0, faixa, transform=eixo.transAxes,
+        ha="right", va="bottom", fontsize=7, color=CINZA,
+    )
+
+    figura.tight_layout(pad=0.4)
+    saida = io.BytesIO()
+    # Fundo transparente: a pagina do relatorio ja e branca, e assim a
+    # imagem fica menor.
+    figura.savefig(saida, format="png", dpi=DPI_GRAFICO, transparent=True)
+    saida.seek(0)
+    return saida
+
+
+def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
+    """Relatorio da sessao em PDF; `secoes` escolhe o que entra.
+
+    A tabela de amostras e opcional: numa sessao longa vira dezenas de
+    paginas. Nao ha secao de codigo de falha - o firmware nao le DTC.
+    """
+    escolhidas = [s for s in secoes if s in SECOES_VALIDAS] or list(SECOES_PADRAO)
+
+    sessao = repo_sessoes.buscar(sessao_id)
+    if sessao is None:
+        raise ValueError(f"sessao {sessao_id} nao encontrada")
+    veiculo = repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True)
+    amostras = repo_amostras.listar(sessao_id)
+    eventos = sorted(repo_sessoes.listar_eventos(sessao_id), key=lambda e: e.id)
+    dados = resumo(sessao_id)
+    inicio = sessao.iniciada_em
+    identificacao = " · ".join(
+        p
+        for p in (
+            veiculo.placa if veiculo else None,
+            f"{veiculo.marca} {veiculo.modelo}" if veiculo else None,
+            inicio.strftime("%d/%m/%Y %H:%M"),
+        )
+        if p
+    )
+
+    saida = io.BytesIO()
+    doc = SimpleDocTemplate(
+        saida,
+        pagesize=A4,
+        leftMargin=42,
+        rightMargin=42,
+        topMargin=42,
+        bottomMargin=42,
+        title=f"Relatorio da sessao {sessao_id}",
+        author="Telemetria DS2/MS41",
+    )
+    estilos = getSampleStyleSheet()
+    est_titulo = ParagraphStyle(
+        "tituloRel", parent=estilos["Title"], fontSize=17, alignment=0, spaceAfter=2
+    )
+    est_legenda = ParagraphStyle(
+        "legendaRel",
+        parent=estilos["Normal"],
+        fontSize=9.5,
+        textColor=colors.HexColor("#666666"),
+    )
+    est_secao = ParagraphStyle(
+        "secaoRel", parent=estilos["Heading2"], fontSize=12, spaceBefore=18, spaceAfter=6
+    )
+    est_secao_menor = ParagraphStyle(
+        "secaoMenorRel", parent=estilos["Heading3"], fontSize=9.5, spaceBefore=8, spaceAfter=2
+    )
+    est_nota = ParagraphStyle(
+        "notaRel",
+        parent=estilos["Normal"],
+        fontSize=8.5,
+        textColor=colors.HexColor("#777777"),
+        spaceBefore=6,
+    )
+
+    largura = doc.width
+    partes = [Paragraph("Relatorio de sessao", est_titulo), Paragraph(identificacao, est_legenda)]
+
+    if "resumo" in escolhidas:
+        linhas = [
+            ("Duracao", _mmss(dados.get("duracao_s"))),
+            ("RPM maximo", _num(dados.get("rpm_pico"))),
+            ("Velocidade maxima", _num(dados.get("vss_pico"), "km/h")),
+            ("Temperatura maxima", _num(dados.get("ect_pico"), "°C")),
+            ("Tensao minima", _num(dados.get("vbat_min"), "V")),
+            ("Amostras", _num(dados.get("amostras"))),
+            ("Amostras completas", _num(dados.get("amostras_completas"))),
+            ("Integridade", _num(dados.get("integridade_pct"), "%")),
+            ("Eventos", _num(dados.get("eventos"))),
+        ]
+        tabela = Table(linhas, colWidths=[largura * 0.55, largura * 0.45])
+        tabela.setStyle(
+            TableStyle(
+                [
+                    ("FONT", (0, 0), (0, -1), "Helvetica", 9.5),
+                    ("FONT", (1, 0), (1, -1), "Courier", 9.5),
+                    ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#555555")),
+                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                    ("LINEBELOW", (0, 0), (-1, -2), 0.3, colors.HexColor("#DDDDDD")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        partes += [
+            Paragraph("Resumo", est_secao),
+            tabela,
+            Paragraph(
+                "Integridade e a fracao de amostras em que a central respondeu os sete "
+                "campos. Onde a leitura falhou o valor nao foi estimado.",
+                est_nota,
+            ),
+        ]
+
+    if "graficos" in escolhidas:
+        partes.append(Paragraph("Graficos", est_secao))
+        for campo, nome, unidade in SERIES_PDF:
+            png = _png_da_serie(campo, nome, unidade, amostras, inicio, largura)
+            if png is None:
+                # Sem nenhuma leitura valida nao ha o que desenhar. A frase
+                # e melhor que um eixo vazio: diz por que o grafico faltou.
+                partes.append(Paragraph(nome, est_secao_menor))
+                partes.append(
+                    Paragraph(
+                        "Nenhuma amostra desta sessao trouxe leitura valida deste campo.",
+                        est_legenda,
+                    )
+                )
+            else:
+                px_largura, px_altura = ImageReader(png).getSize()
+                # ImageReader consumiu o buffer; o Image le o mesmo BytesIO
+                # de novo, entao volta para o inicio antes de entregar.
+                png.seek(0)
+                # A imagem entra com a largura do texto; a altura acompanha
+                # a proporcao, senao o grafico sai esticado.
+                partes.append(
+                    Image(png, width=largura, height=largura * px_altura / px_largura)
+                )
+            partes.append(Spacer(1, 12))
+        partes.append(
+            Paragraph(
+                "A linha e interrompida nos ciclos em que a central nao respondeu aquele "
+                "campo. Trecho vazio significa ausencia de leitura, nao valor constante.",
+                est_nota,
+            )
+        )
+
+    if "eventos" in escolhidas:
+        partes.append(Paragraph("Eventos", est_secao))
+        if not eventos:
+            partes.append(Paragraph("Nenhum evento registrado nesta sessao.", est_legenda))
+        else:
+            linhas = [("Tempo", "Evento", "Detalhe")]
+            for e in eventos:
+                decorrido = (e.criado_em - inicio).total_seconds()
+                linhas.append(
+                    (
+                        _mmss(max(decorrido, 0)),
+                        ROTULO_EVENTO_PDF.get(e.tipo.value, e.tipo.value),
+                        e.mensagem or "",
+                    )
+                )
+            tabela = Table(
+                linhas, colWidths=[largura * 0.16, largura * 0.32, largura * 0.52], repeatRows=1
+            )
+            tabela.setStyle(
+                TableStyle(
+                    [
+                        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9),
+                        ("FONT", (0, 1), (0, -1), "Courier", 9),
+                        ("FONT", (1, 1), (-1, -1), "Helvetica", 9),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#555555")),
+                        ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#DDDDDD")),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ]
+                )
+            )
+            partes.append(tabela)
+
+    if "amostras" in escolhidas:
+        partes.append(Paragraph("Amostras", est_secao))
+        cabecalho = ["t (ms)"] + COLUNAS
+        linhas = [cabecalho]
+        for a in amostras:
+            # Mesma regra do CSV: campo com o bit apagado sai como celula vazia.
+            linhas.append(
+                [str(a.t_ms)] + [str(getattr(a, c)) if a.valido(c) else "" for c in COLUNAS]
+            )
+        tabela = Table(
+            linhas, colWidths=[largura / len(cabecalho)] * len(cabecalho), repeatRows=1
+        )
+        tabela.setStyle(
+            TableStyle(
+                [
+                    ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7.5),
+                    ("FONT", (0, 1), (-1, -1), "Courier", 7.5),
+                    ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#EEEEEE")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+        partes += [
+            tabela,
+            Paragraph(
+                "Celula vazia = a central nao respondeu aquele campo naquele ciclo.", est_nota
+            ),
+        ]
+
+    doc.build(partes)
+    return saida.getvalue()

@@ -1,0 +1,15 @@
+/* So o que e desta tela. Rotulo de filtro, chips de filtro ativo, header
+   que ordena e a linha da placa sao iguais aos da tela de Sessoes e moram
+   em estilos/comum.module.css. */
+
+.placa {
+  font-size: 20px;
+  letter-spacing: 0.4px;
+}
+
+/* Proporcoes do node 2:85 sobre 1504px. */
+.tabela th:nth-child(1) { width: 15.3%; }
+.tabela th:nth-child(2) { width: 49.5%; }
+.tabela th:nth-child(3) { width: 17.3%; }
+.tabela th:nth-child(4) { width: 14.6%; }
+.tabela th:nth-child(5) { width: 50px; }

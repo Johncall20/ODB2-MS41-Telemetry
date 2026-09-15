@@ -1,0 +1,14 @@
+/*
+  Tela de Ajustes: o formulario dos limites do detector.
+*/
+
+.unidade {
+  margin-left: 4px;
+  color: var(--fraco);
+}
+
+.dica {
+  font-size: 14px;
+  color: var(--fraco);
+  line-height: 1.5;
+}

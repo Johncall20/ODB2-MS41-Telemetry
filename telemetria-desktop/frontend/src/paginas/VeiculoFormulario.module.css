@@ -1,0 +1,43 @@
+/*
+  Painel de confirmacao do arquivamento. Fica inline, no lugar do botao,
+  em vez de um confirm() do navegador: precisa dizer quantas sessoes
+  continuam gravadas, e isso nao cabe num dialogo do sistema.
+*/
+
+.confirmacao {
+  padding: 20px 22px;
+  border: 1px solid var(--borda-risco);
+  border-radius: 8px;
+  background: var(--chip-risco);
+}
+
+.pergunta {
+  margin: 0;
+  font-size: 17px;
+  color: var(--texto);
+}
+
+.detalhe {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--apagado);
+}
+
+.botoes {
+  display: flex;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+/*
+  Mesma caixa da confirmacao, em tom de aviso em vez de risco: aqui a
+  pergunta e se o usuario quer restaurar um veiculo arquivado, nao se
+  quer arquivar. Nada se perde em nenhum dos dois caminhos.
+*/
+.confirmacao-neutra {
+  padding: 20px 22px;
+  border: 1px solid var(--ambar);
+  border-radius: 8px;
+  background: var(--chip-ambar);
+}

@@ -1,0 +1,180 @@
+/*
+  Cores e tipografia do grafico da sessao, para o tema escuro.
+*/
+
+.titulo {
+  font-size: 16px;
+  color: var(--texto);
+}
+
+.faixa {
+  font-size: 15px;
+  color: var(--apagado);
+  font-variant-numeric: tabular-nums;
+}
+
+.desenho {
+  width: 100%;
+  height: 168px;
+  margin-top: 10px;
+}
+
+/* O Brush ocupa altura propria abaixo do desenho. */
+.desenho-com-brush {
+  height: 210px;
+}
+
+/* --------------------------------------------------------------- eixos */
+
+.desenho :global(.recharts-cartesian-axis-line),
+.desenho :global(.recharts-cartesian-axis-tick-line) {
+  stroke: var(--linha);
+}
+
+.desenho :global(.recharts-cartesian-axis-tick-value) {
+  fill: var(--fraco);
+  font-family: var(--fonte-mono);
+  font-size: 12px;
+}
+
+.desenho :global(.recharts-cartesian-grid-horizontal) line {
+  stroke: var(--linha);
+}
+
+/* --------------------------------------------------------------- serie */
+
+/*
+  A cor vem do `color` que a pagina poe no card (Analise.module.css), e o
+  Area a recebe por currentColor. Aqui so a transparencia da area, para a
+  linha continuar sendo o que se le.
+*/
+.serie :global(.recharts-area-area) {
+  opacity: 0.12;
+}
+
+.cursor {
+  stroke: var(--apagado);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+/* ------------------------------------------------------ marca de evento */
+
+/* Tracejada, para nao ser confundida com a leitura. */
+.marca :global(.recharts-reference-line-line) {
+  stroke: var(--ambar);
+  stroke-width: 1;
+  opacity: 0.8;
+}
+
+.marca-grave :global(.recharts-reference-line-line) {
+  stroke: var(--risco);
+}
+
+.marca-rotulo {
+  fill: var(--ambar);
+  font-size: 11px;
+}
+
+.marca-grave .marca-rotulo {
+  fill: var(--risco);
+}
+
+/* --------------------------------------------------------------- brush */
+
+.brush :global(.recharts-brush-slide) {
+  fill: var(--realce);
+  fill-opacity: 1;
+}
+
+.brush :global(.recharts-brush-traveller) rect {
+  fill: var(--apagado);
+  stroke: none;
+}
+
+.brush :global(.recharts-brush-traveller) line {
+  stroke: var(--fundo);
+}
+
+.brush > rect {
+  fill: none;
+  stroke: var(--linha);
+}
+
+.brush :global(.recharts-brush-texts) text {
+  fill: var(--fraco);
+  font-family: var(--fonte-mono);
+  font-size: 11px;
+}
+
+/* -------------------------------------------------------------- dica */
+
+.dica {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: var(--fundo);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.dica-instante {
+  font-size: 12px;
+  color: var(--fraco);
+  font-variant-numeric: tabular-nums;
+}
+
+.dica-campo {
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+.dica-valor {
+  font-size: 16px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Leitura que a central nao respondeu: apagada e nomeada, nunca um numero. */
+.dica-ausente {
+  font-size: 14px;
+  color: var(--fraco);
+}
+
+/* ------------------------------------------------------------- legenda */
+
+.legenda {
+  display: flex;
+  gap: 22px;
+  margin-top: 16px;
+}
+
+.legenda-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--apagado);
+}
+
+.legenda-linha {
+  width: 14px;
+  border-top: 1px dashed var(--ambar);
+}
+
+.legenda-linha.marca-grave {
+  border-top-color: var(--risco);
+}
+
+.vazio {
+  margin: 14px 0 0;
+  font-size: 16px;
+  color: var(--fraco);
+}
+
+/* Miniatura da previa de exportacao: so a linha, sem eixo nem interacao.
+   A cor vem do `color` de quem a coloca na tela, como no grafico grande. */
+.miniatura {
+  width: 100%;
+}

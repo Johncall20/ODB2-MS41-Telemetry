@@ -1,0 +1,17 @@
+/*
+  Node 2:87 do Figma: sidebar fixa de 288px + area de conteudo que rola
+  sozinha. Vale para todas as telas internas.
+*/
+
+.shell {
+  display: flex;
+  align-items: stretch;
+  height: 100vh;
+}
+
+.conteudo {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 52px var(--conteudo-padding);
+}

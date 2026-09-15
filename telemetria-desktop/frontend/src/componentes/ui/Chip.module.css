@@ -1,0 +1,29 @@
+/*
+  Etiqueta pequena de estado ou de evento. O tom (neutro, alerta, risco)
+  decide a cor; a forma e sempre a mesma.
+*/
+
+.chips {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.chip {
+  padding: 5px 12px;
+  border-radius: 4px;
+  background: var(--chip-neutro);
+  font-size: 15px;
+  color: var(--apagado);
+  white-space: nowrap;
+}
+
+.alerta {
+  background: var(--chip-ambar);
+  color: var(--ambar);
+}
+
+.risco {
+  background: var(--chip-risco);
+  color: var(--risco);
+}

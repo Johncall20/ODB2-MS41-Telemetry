@@ -1,0 +1,17 @@
+/*
+  O link de volta no topo da tela. A seta herda a cor do texto, entao
+  acompanha o hover sozinha.
+*/
+
+.migalha {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 16px;
+  color: var(--apagado);
+  text-decoration: none;
+}
+
+.migalha:hover {
+  color: var(--texto);
+}

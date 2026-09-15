@@ -1,0 +1,9 @@
+/*
+  A seta de "abre este item", na ultima coluna das tabelas.
+*/
+
+.seta {
+  display: block;
+  margin-left: auto;
+  color: var(--apagado);
+}

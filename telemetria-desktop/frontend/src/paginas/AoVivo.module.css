@@ -1,0 +1,106 @@
+/*
+  Nodes 5:106 (ao vivo) e 5:307 (gravando). Mesma grade nos dois: quatro
+  colunas, o card de RPM ocupando duas.
+*/
+
+.titulo {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 400;
+  letter-spacing: 0.68px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ sinal */
+
+.sinal {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 16px;
+  color: var(--apagado);
+  white-space: nowrap;
+}
+
+.ponto {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  flex: none;
+  background: var(--apagado);
+}
+
+.ponto-ok {
+  background: var(--ok);
+}
+
+.ponto-erro {
+  background: var(--risco);
+}
+
+.ponto-gravando {
+  background: var(--risco);
+  animation: pulso 1.4s ease-in-out infinite;
+}
+
+.ponto-procurando {
+  background: var(--ambar);
+  animation: pulso 1.4s ease-in-out infinite;
+}
+
+@keyframes pulso {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ponto {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------- grade e graficos */
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 34px;
+}
+
+.graficos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.atual {
+  font-size: 19px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+
+.traco-rpm {
+  color: var(--ambar);
+}
+
+.traco-vss {
+  color: var(--apagado);
+}
+
+.eventos {
+  margin-top: 16px;
+  min-height: 220px;
+}
+
+@media (max-width: 1200px) {
+  .grade {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .graficos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

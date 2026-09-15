@@ -1,0 +1,20 @@
+/*
+  Faixa de aviso no topo do conteudo: vermelha para erro, ambar para
+  condicao que a tela so informa.
+*/
+
+.aviso {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--risco);
+  border-left: 2px solid var(--risco);
+  background: rgba(216, 70, 47, 0.08);
+}
+
+/* Aviso que informa em vez de acusar erro: ambar, nao vermelho. */
+.atencao {
+  color: var(--ambar);
+  border-left-color: var(--ambar);
+  background: var(--chip-ambar);
+}

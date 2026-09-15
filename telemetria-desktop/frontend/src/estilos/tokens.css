@@ -1,0 +1,29 @@
+/*
+  Cores, fontes e medidas do app, tiradas do Figma. Ficam em :root para
+  valer em todas as telas.
+*/
+
+:root {
+  --fundo: #0a0e1a;
+  --fundo-alto: #111828;
+  --linha: rgba(242, 242, 240, 0.1);
+  --realce: rgba(242, 242, 240, 0.03);
+  --ambar: #ff8a1f;
+  --ambar-contraste: #1a0e02;
+  --texto: #f2f2f0;
+  --apagado: #8a8a85;
+  --fraco: #5a5a56;
+  --risco: #e2483f;
+  --ok: #3f8f5c;
+  --chip-risco: rgba(226, 72, 63, 0.15);
+  --borda-risco: rgba(226, 72, 63, 0.45);
+  --chip-ambar: rgba(255, 138, 31, 0.13);
+  --chip-neutro: rgba(242, 242, 240, 0.07);
+  --segmento-off: rgba(242, 242, 240, 0.09);
+
+  --fonte: "Space Grotesk", "Segoe UI", Inter, system-ui, sans-serif;
+  --fonte-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  --barra-largura: 288px;
+  --conteudo-padding: 64px;
+}

@@ -1,0 +1,44 @@
+/* So o que e desta tela. Rotulo de filtro, chips de filtro ativo, header
+   que ordena e a linha da placa sao iguais aos da tela de Veiculos e moram
+   em estilos/comum.module.css. */
+
+.placa {
+  display: block;
+  font-size: 19px;
+  letter-spacing: 0.4px;
+  color: var(--texto);
+}
+
+/* Proporcoes do node 5:668 sobre 1504px. */
+.tabela th:nth-child(1) { width: 20%; }
+.tabela th:nth-child(2) { width: 18%; }
+.tabela th:nth-child(3) { width: 12%; }
+.tabela th:nth-child(4) { width: 11.3%; }
+.tabela th:nth-child(5) { width: auto; }
+.tabela th:nth-child(6) { width: 50px; }
+
+/* Os dois campos de data do intervalo personalizado, dentro do popover de
+   periodo. */
+.intervalo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px 10px 4px;
+  border-top: 1px solid var(--linha);
+}
+
+.intervalo-campo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+.data {
+  width: 165px;
+  padding: 8px 10px;
+  font-size: 14px;
+}

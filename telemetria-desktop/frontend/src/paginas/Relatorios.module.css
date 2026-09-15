@@ -1,0 +1,227 @@
+/*
+  Tela /relatorios. Sem node no Figma - segue os tokens e o vocabulario
+  visual das outras telas: card, rotulo pequeno, tabela de linha fina.
+*/
+
+.secao {
+  margin: 34px 0 0;
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--texto);
+}
+
+.aviso {
+  margin: 12px 0 0;
+  font-size: 16px;
+  color: var(--fraco);
+  line-height: 1.5;
+  max-width: 70ch;
+}
+
+.bloco {
+  margin-top: 14px;
+  gap: 0;
+}
+
+.duas-colunas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.link {
+  color: var(--texto);
+  text-decoration: none;
+}
+
+.link:hover {
+  color: var(--ambar);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------ graficos */
+
+.graficos {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.titulo-grafico {
+  font-size: 16px;
+  color: var(--texto);
+}
+
+.desenho {
+  width: 100%;
+  height: 190px;
+  margin-top: 10px;
+}
+
+.desenho-barras {
+  width: 100%;
+  height: 210px;
+  margin-top: 12px;
+  color: var(--ambar);
+}
+
+/* Cor de cada serie, herdada por currentColor como na tela de Analise. */
+.rpm {
+  color: var(--ambar);
+}
+
+.ect {
+  color: var(--risco);
+}
+
+.integridade {
+  color: var(--ok);
+}
+
+.serie :global(.recharts-area-area) {
+  opacity: 0.12;
+}
+
+.barra :global(.recharts-rectangle) {
+  fill: currentColor;
+}
+
+.desenho :global(.recharts-cartesian-axis-line),
+.desenho :global(.recharts-cartesian-axis-tick-line),
+.desenho-barras :global(.recharts-cartesian-axis-line),
+.desenho-barras :global(.recharts-cartesian-axis-tick-line) {
+  stroke: var(--linha);
+}
+
+.desenho :global(.recharts-cartesian-axis-tick-value),
+.desenho-barras :global(.recharts-cartesian-axis-tick-value) {
+  fill: var(--fraco);
+  font-family: var(--fonte-mono);
+  font-size: 12px;
+}
+
+.desenho :global(.recharts-cartesian-grid-horizontal) line,
+.desenho-barras :global(.recharts-cartesian-grid-horizontal) line {
+  stroke: var(--linha);
+}
+
+.desenho-barras :global(.recharts-default-tooltip) {
+  border: 1px solid var(--linha) !important;
+  border-radius: 8px;
+  background: var(--fundo) !important;
+  color: var(--texto);
+}
+
+.cursor {
+  stroke: var(--apagado);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.cursor-barra {
+  fill: var(--realce);
+}
+
+/* ---------------------------------------------------------------- dica */
+
+.dica {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: var(--fundo);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.dica-instante {
+  font-size: 12px;
+  color: var(--fraco);
+}
+
+.dica-campo {
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+.dica-valor {
+  font-size: 16px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------- tabelinha */
+
+.tabelinha {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.tabelinha th {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--linha);
+  color: var(--fraco);
+  font-weight: 400;
+  text-align: right;
+}
+
+.tabelinha th:first-child {
+  text-align: left;
+}
+
+.tabelinha td {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--linha);
+  color: var(--texto);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabelinha td:first-child {
+  text-align: left;
+  color: var(--apagado);
+}
+
+.tabelinha tr:last-child td {
+  border-bottom: 0;
+}
+
+.tabela-comparacao th:first-child {
+  width: 38%;
+}
+
+.dif-positiva {
+  color: var(--ambar);
+}
+
+.dif-negativa {
+  color: var(--apagado);
+}
+
+.dif-neutra {
+  color: var(--fraco);
+}
+
+.vazio-nota {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--fraco);
+  line-height: 1.5;
+}
+
+.escolha-sessoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+@media (max-width: 1100px) {
+  .duas-colunas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
