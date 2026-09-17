@@ -10,6 +10,9 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
+import unicodedata
+from datetime import timezone
 from typing import Sequence
 
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -28,11 +31,96 @@ from reportlab.platypus import (
     TableStyle,
 )
 from ..repositorios import amostras as repo_amostras
+from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
 from ..repositorios import veiculos as repo_veiculos
 from . import metricas
 
 COLUNAS = ["rpm", "ect", "iat", "vbat", "tps", "vanos", "vss"]
+
+
+# ------------------------------------------------------- nome do arquivo
+
+# So estes caracteres entram no nome. Acento, espaco e pontuacao viram
+# outra coisa: o arquivo atravessa Windows, Linux, e-mail e WhatsApp, e
+# cada um deles estraga um caractere diferente.
+_PERMITIDOS = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _sem_acento(texto: str) -> str:
+    """"Citroën" -> "Citroen". Decompoe e joga fora o que e acento."""
+    decomposto = unicodedata.normalize("NFKD", texto or "")
+    return "".join(ch for ch in decomposto if not unicodedata.combining(ch))
+
+
+def _kebab(texto: str) -> str:
+    """"BMW 325i Sport" -> "bmw-325i-sport"."""
+    limpo = _PERMITIDOS.sub("-", _sem_acento(texto).lower().replace("_", "-"))
+    return re.sub(r"-{2,}", "-", limpo).strip("-")
+
+
+def _identificador(sessao_id: int, veiculo) -> str:
+    """Como o carro aparece no nome do arquivo.
+
+    A placa manda: ela ja esta normalizada no banco (maiuscula, sem
+    separador) e e o que o mecanico reconhece. Sem placa, marca e modelo
+    em kebab-case; sem os dois, o numero da sessao - nunca um nome vazio,
+    que deixaria dois sublinhados seguidos.
+    """
+    if veiculo is not None:
+        placa = _PERMITIDOS.sub("", _sem_acento(veiculo.placa or ""))
+        if placa:
+            return placa
+        carro = _kebab(f"{veiculo.marca or ''} {veiculo.modelo or ''}")
+        if carro:
+            return carro
+    # O id PEDIDO, nao o da sessao carregada: quando ela nao existe ainda
+    # assim o nome diz o que foi pedido, em vez de um zero que nao aponta
+    # para nada.
+    return f"sessao{sessao_id}"
+
+
+def _momento_local(sessao) -> str:
+    """O inicio da sessao em hora LOCAL, como "2026-09-17_14h32".
+
+    O banco guarda UTC sem fuso (o SQLite nao tem tipo com fuso), entao
+    marcar o lado UTC antes de converter e o que evita somar o
+    deslocamento na direcao errada. Hora local porque o nome do arquivo e
+    lido por gente: "14h32" tem de casar com o que o relogio dizia.
+    """
+    quando = sessao.iniciada_em
+    if quando.tzinfo is None:
+        quando = quando.replace(tzinfo=timezone.utc)
+    return quando.astimezone().strftime("%Y-%m-%d_%Hh%M")
+
+
+def nome_arquivo(sessao_id: int, extensao: str) -> str:
+    """O nome do arquivo baixado: telemetria_{PLACA}_{AAAA-MM-DD}_{HH}h{MM}.
+
+    Fonte UNICA do nome nas tres exportacoes. O frontend nao monta nome:
+    o link de download nao usa o atributo `download`, justamente para o
+    navegador obedecer ao Content-Disposition - se alguem puser o atributo
+    la, passam a existir dois nomes e eles vao divergir.
+    """
+    sessao = repo_sessoes.buscar(sessao_id)
+    veiculo = (
+        repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True)
+        if sessao is not None
+        else None
+    )
+    ext = _PERMITIDOS.sub("", extensao).lower()
+
+    partes = ["telemetria", _identificador(sessao_id, veiculo)]
+    # Sessao inexistente nao tem data para carimbar; o resto do nome ainda
+    # identifica o pedido, e a rota de PDF ja responde 404 nesse caso.
+    if sessao is not None:
+        partes.append(_momento_local(sessao))
+    return f"{'_'.join(partes)}.{ext}"
+
+
+def cabecalhos_anexo(sessao_id: int, extensao: str) -> dict:
+    """O Content-Disposition pronto, para as tres rotas nao repetirem."""
+    return {"Content-Disposition": f'attachment; filename="{nome_arquivo(sessao_id, extensao)}"'}
 
 
 def _montar(sessao, total, completas, picos: dict, eventos: int) -> dict:
@@ -158,7 +246,11 @@ def para_json(sessao_id: int) -> str:
         "sessao": sessao.model_dump() if sessao else None,
         "resumo": dados,
         # A serie ja esta carregada, entao as metricas saem de graca.
-        "metricas": metricas.calcular(amostras, dados.get("duracao_s")),
+        "metricas": metricas.calcular(
+            amostras,
+            dados.get("duracao_s"),
+            repo_limites.efetivos_da_sessao(sessao) if sessao else None,
+        ),
         "amostras": [a.model_dump() for a in amostras],
         "eventos": [e.model_dump() for e in eventos],
     }

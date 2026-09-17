@@ -21,6 +21,7 @@ from ..modelos import (
     campos_invalidos,
 )
 from ..repositorios import amostras as repo_amostras
+from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
 from .detector import DetectorEventos
 
@@ -90,10 +91,15 @@ class Gravador:
     def iniciar_sessao(self, veiculo_id: int, observacao: str = "") -> dict:
         """Abre a gravacao e prepara o detector.
 
-        Os limites entram por copia: mexer neles nao afeta esta sessao.
+        Os limites efetivos do carro sao resolvidos AQUI e entram por copia
+        em dois lugares: no detector, para mexer neles nao afetar esta
+        sessao, e gravados na linha da Sessao, para a gravacao continuar
+        explicavel meses depois.
         """
-        sessao = repo_sessoes.criar(veiculo_id, observacao)
-        limites = repo_sessoes.limites_da_sessao()
+        limites = repo_limites.efetivos_do_veiculo(veiculo_id)
+        sessao = repo_sessoes.criar(
+            veiculo_id, observacao, snapshot=repo_limites.para_snapshot(limites)
+        )
         dados = {
             "id": sessao.id,
             "veiculo_id": sessao.veiculo_id,

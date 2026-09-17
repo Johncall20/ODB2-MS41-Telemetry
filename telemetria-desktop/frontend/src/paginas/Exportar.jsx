@@ -245,6 +245,9 @@ export function Exportar() {
             Escolha ao menos uma seção
           </button>
         ) : (
+          // Sem atributo `download`: o nome do arquivo e o que o backend manda
+          // no Content-Disposition. Po-lo aqui criaria um segundo nome, e os
+          // dois divergiriam.
           <a
             className={`${c.botao} ${c.botaoPrimario}`}
             href={api.enderecoExportacao(id, formato, escolhidas)}

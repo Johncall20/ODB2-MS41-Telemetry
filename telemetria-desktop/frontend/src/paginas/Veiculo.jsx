@@ -14,7 +14,7 @@ import {
   placa,
   quilometragem,
 } from "../formato.js";
-import { Play, RotateCcw } from "lucide-react";
+import { Play, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Chip, Chips } from "../componentes/ui/Chip.jsx";
 import { Migalha } from "../componentes/ui/Migalha.jsx";
@@ -83,6 +83,14 @@ export function Veiculo() {
         <div className={c.acoes}>
           <button className={c.botao} onClick={() => navegar(`/veiculos/${id}/editar`)}>
             Editar
+          </button>
+          {/*
+            Limite e por carro, entao a tela dele se alcanca pelo carro -
+            nao ha ajuste global em lugar nenhum.
+          */}
+          <button className={c.botao} onClick={() => navegar(`/veiculos/${id}/limites`)}>
+            <SlidersHorizontal className={c.botaoIcone} size={20} aria-hidden="true" />
+            Limites de alerta
           </button>
           {/*
             Arquivado nao grava sessao nova - o backend recusa. No lugar do

@@ -42,6 +42,20 @@ class Sessao(SQLModel, table=True):
     ect_pico: Optional[int] = None
     vbat_min: Optional[float] = None
 
+    # Snapshot dos limites efetivos no instante em que a gravacao comecou.
+    # Ficam aqui para a sessao continuar explicavel depois: mudar o padrao
+    # ou o ajuste do carro nao pode reescrever por que um evento disparou.
+    # Prefixo `limite_` porque `rpm_alto` ao lado de `rpm_pico` seria um
+    # par de nomes parecidos com sentidos opostos - um e regra, outro e
+    # medicao. Nulo = sessao gravada antes deste campo existir; quem le
+    # cai no padrao atual (ver repositorios/limites.efetivos_da_sessao).
+    limite_shift_light_rpm: Optional[int] = None
+    limite_rpm_alto: Optional[int] = None
+    limite_temp_alta_c: Optional[int] = None
+    limite_vbat_baixa: Optional[float] = None
+    limite_rpm_marcha_lenta: Optional[int] = None
+    limite_ect_operacao_c: Optional[int] = None
+
     veiculo: Optional[Veiculo] = Relationship(back_populates="sessoes")
     amostras: List["Amostra"] = Relationship(
         back_populates="sessao",

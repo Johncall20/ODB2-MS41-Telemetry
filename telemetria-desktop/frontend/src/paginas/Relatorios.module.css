@@ -225,3 +225,12 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Nota sob o rotulo da linha de comparacao, quando os dois lados usaram
+   limites diferentes e a diferenca nao pode ser calculada. */
+.nota-limite {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--ambar);
+}

@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..repositorios import relatorios as repo_relatorios
 from ..repositorios import amostras as repo_amostras
+from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
 from ..repositorios import veiculos as repo_veiculos
 from ..servicos import exportador, metricas
@@ -81,10 +82,17 @@ def comparacao(a: int = Query(...), b: int = Query(...)):
 
     def lado(s):
         dados = exportador.resumo(s.id)
+        # Os limites de CADA sessao, nao os de agora: e o que permite ao
+        # comparar() recusar a subtracao quando os dois lados foram
+        # medidos contra limiares diferentes.
+        limites = repo_limites.efetivos_da_sessao(s)
         return {
             "sessao": s.model_dump(),
             "resumo": dados,
-            "metricas": metricas.calcular(repo_amostras.listar(s.id), dados.get("duracao_s")),
+            "limites": limites,
+            "metricas": metricas.calcular(
+                repo_amostras.listar(s.id), dados.get("duracao_s"), limites
+            ),
         }
 
     dois = [lado(s) for s in lados]

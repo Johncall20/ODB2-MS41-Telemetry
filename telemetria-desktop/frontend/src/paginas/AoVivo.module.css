@@ -104,3 +104,19 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Link discreto para os limites do carro selecionado: e onde se muda o
+   que a barra de giro marca e o que vira evento na gravacao. */
+.ajustar-limites {
+  align-self: flex-start;
+  margin: -8px 0 18px;
+  font-size: 14px;
+  color: var(--apagado);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.ajustar-limites:hover {
+  color: var(--texto);
+  border-bottom-color: var(--linha);
+}

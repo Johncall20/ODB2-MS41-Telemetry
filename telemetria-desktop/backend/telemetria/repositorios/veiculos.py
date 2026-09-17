@@ -10,7 +10,7 @@ from sqlalchemy import and_, case, func, or_
 from sqlmodel import select
 
 from ..banco import sessao_db
-from ..modelos import Sessao, Veiculo, agora, normalizar_placa
+from ..modelos import LIMITES_SUGERIDOS, LimitesVeiculo, Sessao, Veiculo, agora, normalizar_placa
 
 # Janela do filtro "recentes". Trinta dias e a mesma da tela de Sessoes.
 DIAS_RECENTES = 30
@@ -150,6 +150,12 @@ def criar(veiculo: Veiculo) -> Veiculo:
     """
     with sessao_db() as db:
         db.add(veiculo)
+        db.commit()
+        db.refresh(veiculo)
+        # Os limites do carro nascem na MESMA transacao: em dois commits
+        # haveria um instante com veiculo sem limites, e um GET nessa
+        # janela quebraria - os seis campos nao sao mais opcionais.
+        db.add(LimitesVeiculo(veiculo_id=veiculo.id, **LIMITES_SUGERIDOS))
         db.commit()
         db.refresh(veiculo)
         return veiculo

@@ -6,9 +6,13 @@ esquema. So sabe ACRESCENTAR coluna e indice, nunca remover nem trocar.
 import os
 from pathlib import Path
 
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import Session, SQLModel, create_engine
 
-from .modelos import Limites
+# Importado pelo efeito colateral: e o import do pacote que registra cada
+# tabela no SQLModel.metadata. Sem ele, um processo que chame criar_tabelas()
+# sem ter importado modelos antes roda create_all() sobre metadata vazio e
+# nao cria tabela nenhuma.
+from . import modelos  # noqa: F401
 
 CAMINHO_DB = Path(os.environ.get("TELEMETRIA_DB", Path.home() / ".telemetria-ds2" / "dados.db"))
 CAMINHO_DB.parent.mkdir(parents=True, exist_ok=True)
@@ -75,14 +79,22 @@ def criar_tabelas() -> None:
     """Deixa o banco pronto: tabelas, colunas, indices e limites.
 
     Roda a cada inicio; barato quando nao ha nada a fazer.
+
+    O backfill dos limites vem por ultimo e e o que sustenta o invariante
+    "todo carro tem os seis limites preenchidos". Precisa rodar ANTES de
+    qualquer leitura: num banco migrado as colunas continuam anulaveis, e
+    o modelo nao aceita mais nulo. Import local porque `repositorios/`
+    importa este modulo - no topo seria ciclo.
     """
     SQLModel.metadata.create_all(engine)
     _completar_colunas()
     _completar_indices()
-    with Session(engine) as s:
-        if s.exec(select(Limites)).first() is None:
-            s.add(Limites(id=1))
-            s.commit()
+
+    from .repositorios import limites as repo_limites
+
+    ajustadas = repo_limites.garantir_linhas()
+    if ajustadas:
+        print(f"[banco] limites preenchidos em {ajustadas} veiculo(s)")
 
 
 def sessao_db() -> Session:

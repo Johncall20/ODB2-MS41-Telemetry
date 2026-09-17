@@ -67,6 +67,11 @@ export const api = {
 
   // Downloads sao links diretos, nao fetch: quem monta o arquivo e o
   // backend e o Content-Disposition dele e que dispara o "salvar como".
+  //
+  // O NOME do arquivo tambem vem de la (`exportador.nome_arquivo`). Por
+  // isso o link nao leva o atributo `download`: ele sobrescreveria o nome
+  // do servidor e passariam a existir duas fontes, que divergem na
+  // primeira vez que uma das duas mudar.
   enderecoExportacao: (id, formato, secoes) =>
     formato === "pdf"
       ? `/api/sessoes/${id}/pdf?secoes=${secoes.join(",")}`
@@ -81,8 +86,16 @@ export const api = {
     pedir(`/api/relatorios/eventos${_query(filtros)}`),
   lerComparacao: (a, b) => pedir(`/api/relatorios/comparacao${_query({ a, b })}`),
 
-  lerLimites: () => pedir("/api/limites"),
-  gravarLimites: (limites) => pedir("/api/limites", { metodo: "PUT", corpo: limites }),
+  // Os limites de alerta de um carro - os unicos que existem. O GET devolve
+  // os seis valores; o PUT exige os seis, porque nao ha heranca de onde
+  // completar um campo ausente.
+  lerLimitesVeiculo: (id) => pedir(`/api/veiculos/${id}/limites`),
+  gravarLimitesVeiculo: (id, limites) =>
+    pedir(`/api/veiculos/${id}/limites`, { metodo: "PUT", corpo: limites }),
+
+  // O ponto de partida que o botao "Usar valores sugeridos" preenche. Nao
+  // e limite de ninguem: so preenche o formulario, salvar e outro ato.
+  lerLimitesSugeridos: () => pedir("/api/limites/sugeridos"),
 
   iniciarSessao: (veiculoId) =>
     pedir("/api/sessoes", { metodo: "POST", corpo: { veiculo_id: veiculoId } }),

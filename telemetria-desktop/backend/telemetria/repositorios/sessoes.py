@@ -1,6 +1,7 @@
 """Ciclo de vida da sessao: abrir, fechar, descartar, e os eventos dela.
 Mexe aqui quem mudar o que acontece ao iniciar ou encerrar uma gravacao.
-Os limites moram aqui porque so sao lidos no inicio da sessao.
+Os limites saem de `repositorios/limites.py`; aqui eles so entram gravados,
+como o snapshot que `criar()` recebe.
 """
 
 from datetime import datetime, timedelta
@@ -12,7 +13,6 @@ from sqlmodel import select
 from ..banco import sessao_db
 from ..modelos import (
     Evento,
-    Limites,
     Sessao,
     StatusSessao,
     TipoEvento,
@@ -154,14 +154,20 @@ def listar(veiculo_id: Optional[int] = None) -> list[Sessao]:
         return list(db.exec(consulta.order_by(Sessao.iniciada_em.desc())))
 
 
-def criar(veiculo_id: int, observacao: str = "") -> Sessao:
+def criar(
+    veiculo_id: int, observacao: str = "", snapshot: Optional[dict] = None
+) -> Sessao:
     """Abre a sessao e registra o evento de inicio.
 
     Sao dois commits, como antes: o primeiro precisa fechar para a sessao
     ganhar id, que o evento referencia.
+
+    `snapshot` sao as colunas `limite_*` ja resolvidas - quem busca o
+    efetivo do carro e o gravador, para a decisao de qual limite vale
+    ficar num lugar so.
     """
     with sessao_db() as db:
-        sessao = Sessao(veiculo_id=veiculo_id, observacao=observacao)
+        sessao = Sessao(veiculo_id=veiculo_id, observacao=observacao, **(snapshot or {}))
         db.add(sessao)
         db.commit()
         db.refresh(sessao)
@@ -308,21 +314,3 @@ def eventos_por_sessao(ids: list[int]) -> dict[int, list[Evento]]:
         for evento in db.exec(consulta):
             agrupados.setdefault(evento.sessao_id, []).append(evento)
     return agrupados
-
-
-def limites_da_sessao() -> Limites:
-    """Copia solta dos limites em vigor.
-
-    Solta porque o objeto do ORM morre com a Session, e o detector leva
-    esses valores pela sessao inteira.
-    """
-    with sessao_db() as db:
-        guardados = db.get(Limites, 1)
-        if guardados is None:
-            return Limites()
-        return Limites(
-            shift_light_rpm=guardados.shift_light_rpm,
-            rpm_alto=guardados.rpm_alto,
-            temp_alta_c=guardados.temp_alta_c,
-            vbat_baixa=guardados.vbat_baixa,
-        )

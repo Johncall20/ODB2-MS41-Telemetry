@@ -77,8 +77,11 @@ export function Metricas({ metricas }) {
   if (!metricas) return null;
   const { desempenho = {}, motor = {}, saude = {}, qualidade = {}, cobertura = {} } = metricas;
 
-  const marchas = motor.marchas || [];
   const descartado = cobertura.tempo_descartado_s;
+  // Os limites que o backend usou nestas contas. Sao os da sessao, e
+  // variam por carro, entao os rotulos citam o numero em vez de fixar
+  // um valor no texto.
+  const lim = metricas.limites || {};
 
   return (
     <div className={s.grade}>
@@ -99,8 +102,20 @@ export function Metricas({ metricas }) {
           nota="só os trechos acelerando"
         />
         <Linha
+          rotulo="Retomada de 80 a 120 km/h"
+          valor={num(desempenho.retomada_80_120_s, "s", 1)}
+          nota={
+            desempenho.retomada_80_120_s === null ? "não ocorreu nesta sessão" : null
+          }
+        />
+        <Linha
           rotulo="Velocidade média em movimento"
           valor={num(desempenho.velocidade_media_movimento, "km/h", 1)}
+        />
+        <Linha
+          rotulo="Velocidade média total"
+          valor={num(desempenho.velocidade_media_total, "km/h", 1)}
+          nota="inclui o tempo parado com o motor ligado"
         />
         <Linha rotulo="Tempo em movimento" valor={segundos(desempenho.tempo_movimento_s)} />
       </Grupo>
@@ -113,54 +128,47 @@ export function Metricas({ metricas }) {
             texto: duracao(f.segundos),
           }))}
         />
-        <Linha rotulo="Tempo em marcha lenta" valor={segundos(motor.tempo_marcha_lenta_s)} />
+        <Linha rotulo="Tempo com o motor ligado" valor={segundos(motor.tempo_motor_ligado_s)} />
+        <Linha
+          rotulo="Tempo em marcha lenta"
+          valor={segundos(motor.tempo_marcha_lenta_s)}
+          nota={lim.rpm_marcha_lenta ? `abaixo de ${milhar(lim.rpm_marcha_lenta)} rpm, parado` : null}
+        />
         <Linha rotulo="Tempo com borboleta acima de 90%" valor={segundos(motor.tempo_tps_acima_90_s)} />
         <Linha
-          rotulo="Trocas de marcha"
-          valor={num(motor.trocas_de_marcha)}
-          nota="estimadas"
+          rotulo="Borboleta média em movimento"
+          valor={num(motor.tps_medio_movimento, "%", 1)}
         />
-
-        <h3 className={s.subtitulo}>
-          Marcha estimada
-          <span className={s.nota}>pela razão velocidade/giro</span>
-        </h3>
-        {marchas.length === 0 ? (
-          <p className={s.vazioNota}>
-            Não foi possível estimar as marchas: a sessão não tem trechos longos o
-            bastante com a razão estável.
-          </p>
-        ) : (
-          <table className={s.tabelinha}>
-            <thead>
-              <tr>
-                <th>Marcha</th>
-                <th>km/h por 1000 rpm</th>
-                <th>Tempo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {marchas.map((m) => (
-                <tr key={m.marcha}>
-                  <td className={c.mono}>{m.marcha}ª</td>
-                  <td className={c.mono}>{num(m.razao_kmh_por_1000rpm, "", 1)}</td>
-                  <td className={c.mono}>{duracao(m.segundos)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <Linha
+          rotulo="Tempo acima do shift light"
+          valor={segundos(motor.tempo_acima_shift_light_s)}
+          nota={lim.shift_light_rpm ? `acima de ${milhar(lim.shift_light_rpm)} rpm` : null}
+        />
+        <Linha
+          rotulo="Tempo acima do giro alto"
+          valor={segundos(motor.tempo_acima_rpm_alto_s)}
+          nota={lim.rpm_alto ? `acima de ${milhar(lim.rpm_alto)} rpm` : null}
+        />
+        <Linha
+          rotulo="Giro alto com o motor frio"
+          valor={segundos(motor.tempo_giro_alto_motor_frio_s)}
+          nota={
+            lim.ect_operacao_c
+              ? `acima de 3.000 rpm com a água abaixo de ${lim.ect_operacao_c} °C`
+              : null
+          }
+        />
       </Grupo>
 
       <Grupo titulo="Saúde">
         <Linha
-          rotulo="Tempo até a água atingir 80 °C"
-          valor={segundos(saude.aquecimento_ate_80_s)}
+          rotulo={`Tempo até a água atingir ${saude.ect_alvo_c ?? "—"} °C`}
+          valor={segundos(saude.aquecimento_s)}
           nota={
             saude.ja_estava_quente
               ? "o motor já subiu quente"
-              : saude.aquecimento_ate_80_s === null && saude.ect_inicial !== null
-                ? "não chegou a 80 °C nesta sessão"
+              : saude.aquecimento_s === null && saude.ect_inicial !== null
+                ? `não chegou a ${saude.ect_alvo_c} °C nesta sessão`
                 : null
           }
         />
@@ -170,7 +178,22 @@ export function Metricas({ metricas }) {
           valor={num(saude.ect_desvio, "°C", 2)}
           nota="quanto a água oscilou"
         />
+        <Linha
+          rotulo="Tempo com temperatura alta"
+          valor={segundos(saude.tempo_temp_alta_s)}
+          nota={lim.temp_alta_c ? `água em ${lim.temp_alta_c} °C ou mais` : null}
+        />
         <Linha rotulo="Tensão média com o motor rodando" valor={num(saude.vbat_media_rodando, "V", 2)} />
+        <Linha
+          rotulo="Tensão em marcha lenta"
+          valor={num(saude.vbat_marcha_lenta, "V", 2)}
+          nota={saude.vbat_marcha_lenta === null ? "a sessão não teve marcha lenta" : null}
+        />
+        <Linha
+          rotulo="Tempo com tensão baixa rodando"
+          valor={segundos(saude.tempo_vbat_baixa_rodando_s)}
+          nota={lim.vbat_baixa ? `${String(lim.vbat_baixa).replace(".", ",")} V ou menos` : null}
+        />
         <Linha
           rotulo="Queda de tensão sob carga"
           valor={num(saude.queda_sob_carga_v, "V", 2)}
@@ -179,6 +202,14 @@ export function Metricas({ metricas }) {
               ? "faltou pedal solto ou pedal fundo"
               : `${num(saude.vbat_sem_carga, "V", 2)} → ${num(saude.vbat_com_carga, "V", 2)}`
           }
+        />
+
+        <Linha rotulo="Temperatura média do ar admitido" valor={num(saude.iat_media, "°C", 1)} />
+        <Linha rotulo="Temperatura máxima do ar admitido" valor={num(saude.iat_max, "°C")} />
+        <Linha
+          rotulo="Elevação do ar admitido"
+          valor={num(saude.iat_elevacao, "°C")}
+          nota="máxima menos a primeira leitura"
         />
 
         <h3 className={s.subtitulo}>

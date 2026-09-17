@@ -14,16 +14,20 @@ from .enums import (
     campos_invalidos,
 )
 from .evento import Evento
-from .limites import Limites
+from .limites import CAMPOS_LIMITE, LIMITES_SUGERIDOS, Limites
+from .limites_veiculo import LimitesVeiculo
 from .sessao import Sessao
 from .veiculo import Veiculo, normalizar_placa
 
 __all__ = [
     "Amostra",
     "BITS_VALID",
+    "CAMPOS_LIMITE",
     "Evento",
     "EstadoLeitor",
+    "LIMITES_SUGERIDOS",
     "Limites",
+    "LimitesVeiculo",
     "Sessao",
     "StatusSessao",
     "TipoEvento",

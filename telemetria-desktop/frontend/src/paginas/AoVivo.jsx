@@ -5,7 +5,7 @@
   "gravando" separada. Mexe aqui quem mudar o painel do mecanico.
 */
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTelemetria } from "../hooks/useTelemetria.js";
 import { api } from "../api.js";
 import { cronometro, milhar, paraData, placa } from "../formato.js";
@@ -47,12 +47,14 @@ function classeSinal(gravando, estado) {
 export function AoVivo() {
   const { amostra, historico, eventos, leitor, conectadoWs, status, gravadas, recarregarStatus } =
     useTelemetria();
-  const [parametros] = useSearchParams();
+  const [parametros, setParametros] = useSearchParams();
   const navegar = useNavigate();
 
   const [veiculos, setVeiculos] = useState([]);
   const [veiculoId, setVeiculoId] = useState(parametros.get("veiculo") || "");
-  const [limites, setLimites] = useState({ shift_light_rpm: 6200, rpm_alto: 6800 });
+  // Os limites do carro escolhido. Nulo ate a primeira resposta chegar;
+  // nessa janela a BarraGiro cai nos proprios defaults.
+  const [limitesDoCarro, setLimitesDoCarro] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [descarte, setDescarte] = useState("");
@@ -66,14 +68,51 @@ export function AoVivo() {
         setVeiculoId((atual) => atual || (lista[0] ? String(lista[0].id) : ""));
       })
       .catch(() => {});
-    fetch("/api/limites")
-      .then((r) => r.json())
-      .then(setLimites)
-      .catch(() => {});
   }, []);
 
   const gravando = Boolean(status?.gravando);
   const sessao = status?.sessao;
+
+  /*
+    O carro escolhido vai para a query, sem localStorage: voltar para
+    /ao-vivo?veiculo=3 tem de reabrir no mesmo carro, e o link tem de
+    poder ser mandado. `replace` porque trocar de carro no seletor nao e
+    navegacao - senao o botao Voltar percorreria cada carro testado.
+  */
+  const escolherVeiculo = useCallback(
+    (id) => {
+      setVeiculoId(id);
+      const proximos = new URLSearchParams(parametros);
+      if (id) proximos.set("veiculo", id);
+      else proximos.delete("veiculo");
+      setParametros(proximos, { replace: true });
+    },
+    [parametros, setParametros]
+  );
+
+  // Cada carro tem os seus limites, entao trocar no seletor recarrega.
+  // A resposta ja e o corpo plano com os seis valores - nao ha mais
+  // padrao nem efetivo de onde escolher.
+  useEffect(() => {
+    if (!veiculoId) {
+      setLimitesDoCarro(null);
+      return;
+    }
+    let atual = true;
+    api
+      .lerLimitesVeiculo(veiculoId)
+      .then((r) => atual && setLimitesDoCarro(r))
+      .catch(() => atual && setLimitesDoCarro(null));
+    return () => {
+      atual = false;
+    };
+  }, [veiculoId]);
+
+  // Gravando, valem os limites da SESSAO - o snapshot que o detector esta
+  // usando. Editar o limite do carro no meio da gravacao nao muda a sessao
+  // em curso, e a barra tem de marcar o que dispara evento agora, nao o
+  // que passaria a valer na proxima.
+  const limites = (gravando ? status?.limites : limitesDoCarro) || null;
 
   // Cronometro da sessao: so precisa de tique enquanto grava.
   useEffect(() => {
@@ -161,21 +200,25 @@ export function AoVivo() {
             {gravando ? `Gravando · ${milhar(gravadas)} amostras` : rotuloSinal(leitor.estado)}
           </span>
 
-          {!gravando && (
-            <select
-              className={c.selecao}
-              value={veiculoId}
-              onChange={(e) => setVeiculoId(e.target.value)}
-              aria-label="Veículo da sessão"
-            >
-              {veiculos.length === 0 && <option value="">nenhum veículo cadastrado</option>}
-              {veiculos.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {placa(v.placa) || `${v.marca} ${v.modelo}`}
-                </option>
-              ))}
-            </select>
-          )}
+          {/*
+            Travado enquanto grava, nao escondido: a sessao pertence a um
+            carro, e sumir com o seletor deixaria a tela sem responder qual
+            e. Desabilitado ele mostra o carro e recusa a troca.
+          */}
+          <select
+            className={c.selecao}
+            value={gravando ? String(sessao?.veiculo_id ?? "") : veiculoId}
+            onChange={(e) => escolherVeiculo(e.target.value)}
+            disabled={gravando}
+            aria-label={gravando ? "Veículo da sessão em andamento" : "Veículo da sessão"}
+          >
+            {veiculos.length === 0 && <option value="">nenhum veículo cadastrado</option>}
+            {veiculos.map((v) => (
+              <option key={v.id} value={v.id}>
+                {placa(v.placa) || `${v.marca} ${v.modelo}`}
+              </option>
+            ))}
+          </select>
 
           <button
             className={`${c.botao} ${gravando ? c.botaoEncerrar : c.botaoPrimario}`}
@@ -192,6 +235,16 @@ export function AoVivo() {
         </div>
       </header>
 
+      {/*
+        Os limites que a barra de giro marca sao os deste carro, e so dele.
+        O link leva para onde mexer neles sem sair procurando pelo menu.
+      */}
+      {veiculoAtivo && (
+        <Link className={s.ajustarLimites} to={`/veiculos/${veiculoAtivo.id}/limites`}>
+          Ajustar limites
+        </Link>
+      )}
+
       {!conectadoWs && (
         <Aviso>
           Sem ligação com o backend. Confira se o servidor está rodando; a página
@@ -206,8 +259,8 @@ export function AoVivo() {
           <BarraGiro
             rpm={amostra?.rpm}
             invalido={parado("rpm")}
-            shift={limites.shift_light_rpm}
-            alto={limites.rpm_alto}
+            shift={limites?.shift_light_rpm}
+            alto={limites?.rpm_alto}
           />
         </Leitura>
         <Leitura rotulo="Velocidade" valor={amostra?.vss} unidade="km/h" invalido={parado("vss")} />

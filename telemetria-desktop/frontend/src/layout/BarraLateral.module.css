@@ -114,3 +114,31 @@
   font-size: 15px;
   color: var(--apagado);
 }
+
+/* ------------------------------------------- aviso de sessao gravando */
+
+/* Empurrado para a direita do link, dentro dele. */
+.gravando {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--risco);
+}
+
+/* Mesmo pulso do painel ao vivo, para ser a mesma linguagem visual. */
+.ponto {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  flex: none;
+  background: var(--risco);
+  animation: pulso-barra 1.4s ease-in-out infinite;
+}
+
+@keyframes pulso-barra {
+  50% {
+    opacity: 0.25;
+  }
+}

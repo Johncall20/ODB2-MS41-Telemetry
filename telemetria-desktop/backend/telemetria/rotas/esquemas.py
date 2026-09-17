@@ -3,6 +3,8 @@ Os formatos que entram e saem pelas rotas: entradas Pydantic, que validam,
 e os montadores de dicionario que mais de uma rota reaproveita.
 """
 
+from typing import Optional
+
 from pydantic import BaseModel, field_validator
 
 from ..modelos import Evento, TipoEvento, Veiculo, normalizar_placa
@@ -33,6 +35,51 @@ class InicioSessao(BaseModel):
 
     veiculo_id: int
     observacao: str = ""
+
+
+class LimitesEntrada(BaseModel):
+    """O PUT dos limites de um carro: os seis campos, todos obrigatorios.
+
+    Todos obrigatorios porque nao ha heranca - o carro tem os seis valores
+    e nada de fora os completa. Campo ausente nao teria de quem herdar.
+    """
+
+    shift_light_rpm: int
+    rpm_alto: int
+    temp_alta_c: int
+    vbat_baixa: float
+    rpm_marcha_lenta: int
+    ect_operacao_c: int
+
+
+def problema_nos_limites(valores: dict) -> Optional[str]:
+    """A frase do erro se estes limites nao fazem sentido, ou None.
+
+    Os seis valores chegam juntos, entao a checagem e direta: positivos e
+    na ordem `rpm_marcha_lenta < shift_light_rpm < rpm_alto`.
+    """
+    for campo, rotulo in (
+        ("shift_light_rpm", "shift light"),
+        ("rpm_alto", "giro alto"),
+        ("temp_alta_c", "temperatura alta"),
+        ("vbat_baixa", "bateria baixa"),
+        ("rpm_marcha_lenta", "marcha lenta"),
+        ("ect_operacao_c", "temperatura de operacao"),
+    ):
+        if valores[campo] is None or valores[campo] <= 0:
+            return f"o limite de {rotulo} precisa ser maior que zero"
+
+    if valores["shift_light_rpm"] >= valores["rpm_alto"]:
+        return (
+            f"o shift light ({valores['shift_light_rpm']} rpm) tem de ficar abaixo "
+            f"do giro alto ({valores['rpm_alto']} rpm)"
+        )
+    if valores["rpm_marcha_lenta"] >= valores["shift_light_rpm"]:
+        return (
+            f"a marcha lenta ({valores['rpm_marcha_lenta']} rpm) tem de ficar abaixo "
+            f"do shift light ({valores['shift_light_rpm']} rpm)"
+        )
+    return None
 
 
 # INICIO_SESSAO e FIM_SESSAO existem em toda sessao; nao dizem nada sobre o

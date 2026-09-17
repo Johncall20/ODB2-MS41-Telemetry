@@ -421,7 +421,20 @@ function TabelaComparacao({ dados }) {
         <tbody>
           {dados.comparacao.map((linha) => (
             <tr key={`${linha.grupo}-${linha.campo}`}>
-              <td>{linha.rotulo}</td>
+              <td>
+                {linha.rotulo}
+                {/*
+                  Limite diferente nos dois lados: a diferenca nao foi
+                  calculada de proposito, e a nota diz por que. Sem ela o
+                  travessao pareceria falta de medicao.
+                */}
+                {linha.limites_diferentes && (
+                  <span className={s.notaLimite}>
+                    limites diferentes: {formatar(linha.limite_a, 0, "")} ·{" "}
+                    {formatar(linha.limite_b, 0, "")}
+                  </span>
+                )}
+              </td>
               <td className={c.mono}>{formatar(linha.a, linha.casas, linha.unidade)}</td>
               <td className={c.mono}>{formatar(linha.b, linha.casas, linha.unidade)}</td>
               <td
@@ -447,7 +460,9 @@ function TabelaComparacao({ dados }) {
       </table>
       <p className={s.vazioNota}>
         A diferença é a segunda sessão menos a primeira. Travessão significa que
-        uma das duas não tem esse valor medido — não que sejam iguais.
+        uma das duas não tem esse valor medido — não que sejam iguais. Onde as
+        duas sessões usaram limites diferentes a diferença também fica em
+        travessão: os dois lados responderam perguntas diferentes.
       </p>
     </div>
   );

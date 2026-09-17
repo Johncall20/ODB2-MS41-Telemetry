@@ -2,6 +2,14 @@
 Metricas da serie de uma sessao: desempenho, motor, saude e qualidade.
 Funcao pura, nao toca no banco. Toda metrica ignora amostra com `valid`
 apagado, e sem leitura devolve None - nunca zero.
+
+Toda metrica aqui e CALCULO DIRETO sobre o que o firmware mediu. Nada de
+heuristica nem suposicao sobre o carro: o que nao sai da medicao nao entra
+neste modulo (ver "Limitacoes conhecidas" no CLAUDE.md).
+
+Os limiares que dependem do motor - marcha lenta, temperatura de operacao,
+shift light, giro alto, temperatura alta, tensao baixa - vem dos limites da
+sessao, nao de constante. O cadastro aceita qualquer carro.
 """
 
 from __future__ import annotations
@@ -9,7 +17,7 @@ from __future__ import annotations
 import statistics
 from typing import Iterable, Optional
 
-from ..modelos import BITS_VALID, Amostra
+from ..modelos import BITS_VALID, CAMPOS_LIMITE, LIMITES_SUGERIDOS, Amostra
 
 # Acima disto o intervalo nao e atribuido a ninguem: a 1 Hz nominal, tres
 # segundos ja sao dois ciclos perdidos.
@@ -19,32 +27,33 @@ DT_MAXIMO_S = 3.0
 FAIXAS_RPM = ((0, 2000), (2000, 4000), (4000, 6000), (6000, None))
 
 RPM_MOTOR_RODANDO = 400      # abaixo disto o motor esta parado, nao em marcha lenta
-RPM_MARCHA_LENTA = 1100      # teto de marcha lenta num M50 quente
 TPS_ABERTO = 90.0            # "pe no fundo"
 TPS_SEM_CARGA = 10.0
 TPS_COM_CARGA = 50.0
-ECT_AQUECIDO = 80.0          # alvo do termostato do E36
 VSS_ARRANCADA = 100          # km/h do 0-100
+VSS_RETOMADA = (80, 120)     # a janela de retomada, em km/h
 
-# Marcha estimada: a razao vss/rpm e praticamente constante dentro de uma
-# marcha engatada. Amostra com giro ou velocidade baixa demais fica fora -
-# embreagem pisada e saida do ponto dao razao que nao descreve marcha
-# nenhuma.
-RPM_MIN_MARCHA = 900
-VSS_MIN_MARCHA = 5
-TOLERANCIA_MARCHA = 0.08       # +-8% em torno da media do trecho
-DURACAO_MINIMA_MARCHA_S = 3.0  # engate que nao se sustenta e troca, nao marcha
-# Para PROVAR que existe uma marcha, a razao tem de se manter enquanto o
-# giro anda de verdade. Trecho quase parado tem razao estavel por acidente:
-# duas grandezas que mal se mexem sempre parecem proporcionais.
-VARIACAO_MINIMA_RPM = 400
-# Duas marchas vizinhas de um cambio de producao nunca ficam a menos de
-# ~20% uma da outra (num E36 o salto e de 25% a 70%). Candidatas mais
-# proximas que isso sao a mesma marcha vista duas vezes, com o ruido do
-# arredondamento de vss no meio - nao duas marchas.
-SEPARACAO_MINIMA_MARCHA = 0.20
-MAXIMO_MARCHAS = 7             # cambio manual nao passa disso; mais que isso
-                               # quer dizer que a serie nao tem cara de cambio
+# Giro a partir do qual exigir do motor frio castiga: nao e limite de
+# alerta (isso e o shift light), e o ponto onde o desgaste comeca a
+# importar com o oleo ainda grosso. Constante porque nao depende do
+# preparo do carro - depende do oleo.
+RPM_ESFORCO_FRIO = 3000
+
+
+def _limites_efetivos(limites: Optional[dict]) -> dict:
+    """Os seis limites como dict, com os SUGERIDOS no que faltar.
+
+    Aceita o dicionario que `repositorios/limites.efetivos_da_sessao()`
+    devolve (que traz `do_snapshot` junto - ignorado aqui). O fallback
+    existe so para quem chama sem limites; no app as tres chamadas passam
+    os da sessao.
+    """
+    valores = dict(LIMITES_SUGERIDOS)
+    for campo in CAMPOS_LIMITE:
+        vindo = (limites or {}).get(campo)
+        if vindo is not None:
+            valores[campo] = vindo
+    return valores
 
 
 def _dt(atual: Amostra, seguinte: Amostra) -> Optional[float]:
@@ -98,11 +107,16 @@ def _rotulo_faixa(baixo, alto) -> str:
     return f"{baixo}-{alto}" if alto is not None else f"acima de {baixo}"
 
 
+def _motor_rodando(a: Amostra) -> bool:
+    """Motor girando. Exige rpm valido em quem chama."""
+    return a.rpm > RPM_MOTOR_RODANDO
+
+
 # ------------------------------------------------------------- desempenho
 
 
-def _desempenho(amostras: list[Amostra]) -> dict:
-    """Distancia, aceleracao, velocidade em movimento e o 0-100.
+def _desempenho(amostras: list[Amostra], lim: dict) -> dict:
+    """Distancia, aceleracao, velocidade e as janelas de arrancada.
 
     A aceleracao exige vss valido em DUAS amostras vizinhas - sem as duas
     nao ha delta. A ~1 Hz a resolucao e grossa.
@@ -122,6 +136,16 @@ def _desempenho(amostras: list[Amostra]) -> dict:
             if a > 0:
                 aceleracoes.append(a)
 
+    # Media do percurso inteiro, parado incluso. Atencao: a distancia sai
+    # das amostras com vss valido e o tempo das amostras com rpm valido -
+    # sao coberturas diferentes, e num link ruim o quociente fica torto.
+    # E o preco da definicao "distancia por tempo de motor ligado"; o
+    # numero honesto de comparar entre sessoes e a media em movimento.
+    tempo_ligado = _tempo_onde(amostras, _motor_rodando, "rpm")
+    media_total = None
+    if tempo_com_vss > 0 and tempo_ligado > 0:
+        media_total = (metros / 1000.0) / (tempo_ligado / 3600.0)
+
     return {
         "distancia_km": round(metros / 1000, 3) if tempo_com_vss > 0 else None,
         # So as aceleracoes positivas entram na media: misturar frenagem
@@ -134,18 +158,24 @@ def _desempenho(amostras: list[Amostra]) -> dict:
         "velocidade_media_movimento": _arredonda(
             _media_ponderada(amostras, lambda a: a.vss, lambda a: a.vss > 0, "vss"), 1
         ),
+        "velocidade_media_total": _arredonda(media_total, 1),
         "tempo_movimento_s": round(
             _tempo_onde(amostras, lambda a: a.vss > 0, "vss"), 1
         ),
-        "zero_a_100_s": _zero_a_cem(amostras),
+        "zero_a_100_s": _janela_velocidade(amostras, 0, VSS_ARRANCADA),
+        "retomada_80_120_s": _janela_velocidade(amostras, *VSS_RETOMADA),
     }
 
 
-def _zero_a_cem(amostras: list[Amostra]) -> Optional[float]:
-    """Menor tempo entre parado e 100 km/h, ou None.
+def _janela_velocidade(amostras: list[Amostra], de: int, para: int) -> Optional[float]:
+    """Menor tempo entre `de` km/h ou menos e `para` km/h ou mais.
 
-    Nao interpola. Buraco de leitura no meio invalida a arrancada: nao da
-    para afirmar que o carro nao parou num trecho que ninguem leu.
+    Nao interpola. Buraco de leitura no meio invalida a janela: nao da
+    para afirmar que o carro nao desacelerou num trecho que ninguem leu.
+
+    Serve o 0-100 (de=0, e como vss nunca e negativo `<= 0` e `== 0`) e a
+    retomada 80-120. E a mesma regra com outros limiares - duplicar
+    significaria corrigir o tratamento do buraco em dois lugares.
     """
     melhor = None
     inicio = None
@@ -153,12 +183,12 @@ def _zero_a_cem(amostras: list[Amostra]) -> Optional[float]:
         if not a.valido("vss"):
             inicio = None          # buraco na leitura: a janela nao vale mais
             continue
-        if a.vss == 0:
+        if a.vss <= de:
             inicio = a
             continue
         if inicio is None:
             continue
-        if a.vss >= VSS_ARRANCADA:
+        if a.vss >= para:
             dt = (a.t_ms - inicio.t_ms) / 1000.0
             if dt > 0 and (melhor is None or dt < melhor):
                 melhor = dt
@@ -169,8 +199,9 @@ def _zero_a_cem(amostras: list[Amostra]) -> Optional[float]:
 # ----------------------------------------------------------- uso do motor
 
 
-def _motor(amostras: list[Amostra]) -> dict:
-    """Histograma de rpm, pe no fundo, marcha lenta e marcha estimada."""
+def _motor(amostras: list[Amostra], lim: dict) -> dict:
+    """Histograma de rpm, pe no fundo, marcha lenta e tempo nas faixas de
+    alerta - estas ultimas contra os limites DA SESSAO."""
     histograma = []
     for i, (baixo, alto) in enumerate(FAIXAS_RPM):
         segundos = _tempo_onde(amostras, lambda a, i=i: _faixa_de(a.rpm) == i, "rpm")
@@ -180,6 +211,7 @@ def _motor(amostras: list[Amostra]) -> dict:
 
     return {
         "tempo_por_faixa_rpm": histograma,
+        "tempo_motor_ligado_s": round(_tempo_onde(amostras, _motor_rodando, "rpm"), 1),
         "tempo_tps_acima_90_s": round(
             _tempo_onde(amostras, lambda a: a.tps > TPS_ABERTO, "tps"), 1
         ),
@@ -189,196 +221,120 @@ def _motor(amostras: list[Amostra]) -> dict:
         "tempo_marcha_lenta_s": round(
             _tempo_onde(
                 amostras,
-                lambda a: RPM_MOTOR_RODANDO < a.rpm < RPM_MARCHA_LENTA and a.vss == 0,
+                lambda a: _motor_rodando(a) and a.rpm < lim["rpm_marcha_lenta"] and a.vss == 0,
                 "rpm",
                 "vss",
             ),
             1,
         ),
-        **_marchas(amostras),
-    }
-
-
-def _trechos_de_marcha(amostras: list[Amostra]) -> list[list[tuple[float, float]]]:
-    """Trechos CONSECUTIVOS com razao vss/rpm estavel.
-
-    Estavel no TEMPO, nao no conjunto: fatiar todas as razoes por
-    proximidade acharia marcha ate sem cambio nenhum.
-    """
-    trechos: list[list[tuple[float, float]]] = []
-    atual: list[tuple[float, float]] = []
-
-    for i, a in enumerate(amostras):
-        seguinte = amostras[i + 1] if i + 1 < len(amostras) else None
-        dt = _dt(a, seguinte) if seguinte is not None else None
-        serve = (
-            dt is not None
-            and a.valido("rpm")
-            and a.valido("vss")
-            and a.rpm >= RPM_MIN_MARCHA
-            and a.vss >= VSS_MIN_MARCHA
-        )
-        if not serve:
-            if atual:
-                trechos.append(atual)
-                atual = []
-            continue
-
-        razao = a.vss / a.rpm * 1000.0
-        if atual:
-            media = sum(r for r, _, _ in atual) / len(atual)
-            if abs(razao - media) > media * TOLERANCIA_MARCHA:
-                trechos.append(atual)
-                atual = []
-        atual.append((razao, dt, a.rpm))
-
-    if atual:
-        trechos.append(atual)
-    return trechos
-
-
-def _marchas(amostras: list[Amostra]) -> dict:
-    """Marcha ESTIMADA pela razao vss/rpm, sem tabela de relacoes.
-
-    LIMITE: sem cambio na serie (o simulador) ainda saem uma ou duas
-    marchas falsas. Primeira metrica a conferir no hardware real.
-    """
-    vazio = {"marchas": [], "trocas_de_marcha": None}
-
-    trechos = [
-        t for t in _trechos_de_marcha(amostras)
-        if sum(dt for _, dt, _ in t) >= DURACAO_MINIMA_MARCHA_S
-    ]
-    if not trechos:
-        return vazio
-
-    medias = [sum(r for r, _, _ in t) / len(t) for t in trechos]
-    percurso = [max(g for _, _, g in t) - min(g for _, _, g in t) for t in trechos]
-
-    # So os trechos em que o giro percorreu uma faixa larga definem as
-    # marchas. Cruzeiro a giro constante nao prova proporcionalidade
-    # nenhuma - mas depois e encaixado numa das marchas ja descobertas,
-    # entao o tempo dele nao se perde.
-    sementes = [i for i in range(len(trechos)) if percurso[i] >= VARIACAO_MINIMA_RPM]
-    if not sementes:
-        return vazio
-
-    sementes.sort(key=lambda i: medias[i])
-    grupos: list[list[int]] = [[sementes[0]]]
-    for indice in sementes[1:]:
-        referencia = sum(medias[i] for i in grupos[-1]) / len(grupos[-1])
-        # Separacao de cambio, e nao a tolerancia do trecho: o que decide
-        # se sao DUAS marchas e a distancia entre relacoes reais.
-        if abs(medias[indice] - referencia) <= referencia * SEPARACAO_MINIMA_MARCHA:
-            grupos[-1].append(indice)
-        else:
-            grupos.append([indice])
-
-    if len(grupos) > MAXIMO_MARCHAS:
-        # Mais "marchas" que qualquer cambio manual: o que a serie mostra
-        # nao e troca de marcha, e nao ha o que estimar.
-        return vazio
-
-    razoes = [sum(medias[i] for i in g) / len(g) for g in grupos]
-
-    # Encaixa TODO trecho estavel na marcha mais proxima, semente ou nao.
-    # Trecho que nao cai perto de nenhuma fica de fora - e o que sobra de
-    # embreagem no meio do caminho.
-    marcha_do_trecho = {}
-    for indice in range(len(trechos)):
-        melhor, distancia = None, None
-        for numero, razao in enumerate(razoes, start=1):
-            desvio = abs(medias[indice] - razao) / razao
-            if desvio <= SEPARACAO_MINIMA_MARCHA / 2 and (
-                distancia is None or desvio < distancia
-            ):
-                melhor, distancia = numero, desvio
-        if melhor is not None:
-            marcha_do_trecho[indice] = melhor
-
-    marchas = [
-        {
-            "marcha": numero,
-            "razao_kmh_por_1000rpm": round(razoes[numero - 1], 1),
-            "segundos": round(
-                sum(
-                    dt
-                    for indice, atribuida in marcha_do_trecho.items()
-                    if atribuida == numero
-                    for _, dt, _ in trechos[indice]
-                ),
-                1,
+        # Os mesmos limiares que o detector usou para criar evento, entao
+        # "3 eventos de shift light" e "40 s acima do shift light" falam do
+        # mesmo numero. `>=` como no detector.
+        "tempo_acima_shift_light_s": round(
+            _tempo_onde(amostras, lambda a: a.rpm >= lim["shift_light_rpm"], "rpm"), 1
+        ),
+        "tempo_acima_rpm_alto_s": round(
+            _tempo_onde(amostras, lambda a: a.rpm >= lim["rpm_alto"], "rpm"), 1
+        ),
+        # Giro alto com o motor ainda frio: exige rpm E ect validos na
+        # mesma amostra - sem os dois nao da para afirmar as duas coisas.
+        "tempo_giro_alto_motor_frio_s": round(
+            _tempo_onde(
+                amostras,
+                lambda a: a.rpm >= RPM_ESFORCO_FRIO and a.ect < lim["ect_operacao_c"],
+                "rpm",
+                "ect",
             ),
-        }
-        for numero in range(1, len(razoes) + 1)
-    ]
-
-    # Trocas: mudancas de marcha entre trechos vizinhos NA ORDEM DO TEMPO.
-    # Dois trechos seguidos da mesma marcha - separados por um buraco de
-    # leitura, por exemplo - nao contam como troca.
-    trocas = 0
-    anterior = None
-    for indice in range(len(trechos)):
-        atual = marcha_do_trecho.get(indice)
-        if atual is None:
-            continue
-        if anterior is not None and atual != anterior:
-            trocas += 1
-        anterior = atual
-
-    return {"marchas": marchas, "trocas_de_marcha": trocas}
+            1,
+        ),
+        "tps_medio_movimento": _arredonda(
+            _media_ponderada(amostras, lambda a: a.tps, lambda a: a.vss > 0, "tps", "vss"), 1
+        ),
+    }
 
 
 # ----------------------------------------------------------------- saude
 
 
-def _saude(amostras: list[Amostra]) -> dict:
-    """Aquecimento, estabilidade termica, tensao e atuacao do VANOS."""
+def _saude(amostras: list[Amostra], lim: dict) -> dict:
+    """Aquecimento, estabilidade termica, tensao, ar admitido e VANOS."""
     com_ect = [a for a in amostras if a.valido("ect")]
+    alvo = lim["ect_operacao_c"]
 
     aquecimento = None
     ect_inicial = com_ect[0].ect if com_ect else None
-    if com_ect and com_ect[0].ect < ECT_AQUECIDO:
+    if com_ect and com_ect[0].ect < alvo:
         for a in com_ect:
-            if a.ect >= ECT_AQUECIDO:
+            if a.ect >= alvo:
                 aquecimento = round((a.t_ms - com_ect[0].t_ms) / 1000.0, 1)
                 break
 
-    # Estabilizacao: so o trecho depois de a agua chegar aos 80 graus. Com
-    # o motor frio a temperatura esta subindo por definicao, e incluir a
-    # subida faria o desvio descrever o aquecimento, nao a estabilidade.
+    # Estabilizacao: so o trecho depois de a agua chegar a temperatura de
+    # operacao. Com o motor frio a temperatura esta subindo por definicao,
+    # e incluir a subida faria o desvio descrever o aquecimento, nao a
+    # estabilidade.
     depois = []
     aquecida = False
     for a in com_ect:
-        if a.ect >= ECT_AQUECIDO:
+        if a.ect >= alvo:
             aquecida = True
         if aquecida:
             depois.append(a.ect)
 
-    rodando = lambda a: a.rpm > RPM_MOTOR_RODANDO  # noqa: E731
-
     sem_carga = _media_ponderada(
-        amostras, lambda a: a.vbat, lambda a: rodando(a) and a.tps <= TPS_SEM_CARGA,
+        amostras, lambda a: a.vbat, lambda a: _motor_rodando(a) and a.tps <= TPS_SEM_CARGA,
         "vbat", "rpm", "tps",
     )
     com_carga = _media_ponderada(
-        amostras, lambda a: a.vbat, lambda a: rodando(a) and a.tps > TPS_COM_CARGA,
+        amostras, lambda a: a.vbat, lambda a: _motor_rodando(a) and a.tps > TPS_COM_CARGA,
         "vbat", "rpm", "tps",
     )
 
+    iats = [a.iat for a in amostras if a.valido("iat")]
+
     return {
-        "aquecimento_ate_80_s": aquecimento,
+        "aquecimento_s": aquecimento,
+        # O alvo usado vai junto: ele varia por carro, entao o numero sem
+        # ele nao diz ate onde a agua subiu.
+        "ect_alvo_c": alvo,
         "ect_inicial": ect_inicial,
         # Sem aquecimento medido o motor ja subiu quente; a tela usa isso
         # para explicar o travessao em vez de deixar o campo mudo.
-        "ja_estava_quente": bool(com_ect) and com_ect[0].ect >= ECT_AQUECIDO,
+        "ja_estava_quente": bool(com_ect) and com_ect[0].ect >= alvo,
         "ect_estabilizada": round(statistics.fmean(depois), 1) if depois else None,
         "ect_desvio": round(statistics.pstdev(depois), 2) if len(depois) > 1 else None,
+        "tempo_temp_alta_s": round(
+            _tempo_onde(amostras, lambda a: a.ect >= lim["temp_alta_c"], "ect"), 1
+        ),
         "vbat_media_rodando": _arredonda(
-            _media_ponderada(amostras, lambda a: a.vbat, rodando, "vbat", "rpm"), 2
+            _media_ponderada(amostras, lambda a: a.vbat, _motor_rodando, "vbat", "rpm"), 2
         ),
         "vbat_sem_carga": _arredonda(sem_carga, 2),
         "vbat_com_carga": _arredonda(com_carga, 2),
+        # Tensao em marcha lenta: a mesma definicao de marcha lenta do
+        # bloco do motor, e nao so "motor ligado e parado" - senao o carro
+        # parado a 4000 rpm entraria na media da marcha lenta.
+        "vbat_marcha_lenta": _arredonda(
+            _media_ponderada(
+                amostras,
+                lambda a: a.vbat,
+                lambda a: _motor_rodando(a) and a.rpm < lim["rpm_marcha_lenta"] and a.vss == 0,
+                "vbat",
+                "rpm",
+                "vss",
+            ),
+            2,
+        ),
+        # `<=` como no detector, que dispara BATERIA_BAIXA na descida.
+        "tempo_vbat_baixa_rodando_s": round(
+            _tempo_onde(
+                amostras,
+                lambda a: a.vbat <= lim["vbat_baixa"] and _motor_rodando(a),
+                "vbat",
+                "rpm",
+            ),
+            1,
+        ),
         # Queda sob carga: quanto a tensao cede entre pedal solto e pedal
         # fundo. None quando faltou um dos dois lados - a sessao pode nao
         # ter tido carga nenhuma.
@@ -387,6 +343,14 @@ def _saude(amostras: list[Amostra]) -> dict:
             if sem_carga is not None and com_carga is not None
             else None
         ),
+        # Ar admitido. A elevacao e sobre a PRIMEIRA leitura valida, nao
+        # sobre a minima: o que interessa e quanto o ar esquentou desde o
+        # comeco da gravacao, e a minima poderia cair no meio dela.
+        "iat_media": _arredonda(
+            _media_ponderada(amostras, lambda a: a.iat, lambda a: True, "iat"), 1
+        ),
+        "iat_max": max(iats) if iats else None,
+        "iat_elevacao": (max(iats) - iats[0]) if iats else None,
         "vanos_por_faixa_rpm": _vanos_por_faixa(amostras),
     }
 
@@ -472,36 +436,53 @@ def _arredonda(valor: Optional[float], casas: int) -> Optional[float]:
 
 
 # Linhas da comparacao entre duas sessoes, na ordem em que a tela mostra.
-# Cada uma diz onde buscar o valor: "resumo" ou uma categoria de metricas.
+# Cada uma diz onde buscar o valor ("resumo" ou uma categoria de metricas)
+# e, no ultimo campo, de QUAL limite ela depende - None quando nao depende
+# de nenhum. Ver comparar() para o que o limite muda.
 COMPARAVEIS = (
-    ("resumo", "duracao_s", "Duração", "s", 1),
-    ("resumo", "amostras", "Amostras", "", 0),
-    ("resumo", "integridade_pct", "Integridade", "%", 1),
-    ("resumo", "rpm_pico", "RPM máximo", "", 0),
-    ("resumo", "vss_pico", "Velocidade máxima", "km/h", 0),
-    ("resumo", "ect_pico", "Temperatura máxima", "°C", 0),
-    ("resumo", "vbat_min", "Tensão mínima", "V", 2),
-    ("resumo", "eventos", "Eventos", "", 0),
-    ("desempenho", "distancia_km", "Distância", "km", 2),
-    ("desempenho", "zero_a_100_s", "0 a 100 km/h", "s", 1),
-    ("desempenho", "aceleracao_maxima_ms2", "Aceleração máxima", "m/s²", 2),
-    ("desempenho", "velocidade_media_movimento", "Velocidade média", "km/h", 1),
-    ("motor", "tempo_marcha_lenta_s", "Tempo em marcha lenta", "s", 1),
-    ("motor", "tempo_tps_acima_90_s", "Tempo acima de 90% de borboleta", "s", 1),
-    ("motor", "trocas_de_marcha", "Trocas de marcha", "", 0),
-    ("saude", "aquecimento_ate_80_s", "Aquecimento até 80 °C", "s", 1),
-    ("saude", "ect_estabilizada", "Temperatura estabilizada", "°C", 1),
-    ("saude", "vbat_media_rodando", "Tensão média rodando", "V", 2),
-    ("saude", "queda_sob_carga_v", "Queda de tensão sob carga", "V", 2),
-    ("qualidade", "taxa_hz", "Taxa de amostragem", "Hz", 2),
+    ("resumo", "duracao_s", "Duração", "s", 1, None),
+    ("resumo", "amostras", "Amostras", "", 0, None),
+    ("resumo", "integridade_pct", "Integridade", "%", 1, None),
+    ("resumo", "rpm_pico", "RPM máximo", "", 0, None),
+    ("resumo", "vss_pico", "Velocidade máxima", "km/h", 0, None),
+    ("resumo", "ect_pico", "Temperatura máxima", "°C", 0, None),
+    ("resumo", "vbat_min", "Tensão mínima", "V", 2, None),
+    ("resumo", "eventos", "Eventos", "", 0, None),
+    ("desempenho", "distancia_km", "Distância", "km", 2, None),
+    ("desempenho", "zero_a_100_s", "0 a 100 km/h", "s", 1, None),
+    ("desempenho", "retomada_80_120_s", "Retomada de 80 a 120 km/h", "s", 1, None),
+    ("desempenho", "aceleracao_maxima_ms2", "Aceleração máxima", "m/s²", 2, None),
+    ("desempenho", "velocidade_media_movimento", "Velocidade média em movimento", "km/h", 1, None),
+    ("desempenho", "velocidade_media_total", "Velocidade média total", "km/h", 1, None),
+    ("motor", "tempo_marcha_lenta_s", "Tempo em marcha lenta", "s", 1, "rpm_marcha_lenta"),
+    ("motor", "tempo_tps_acima_90_s", "Tempo acima de 90% de borboleta", "s", 1, None),
+    ("motor", "tempo_acima_shift_light_s", "Tempo acima do shift light", "s", 1, "shift_light_rpm"),
+    ("motor", "tempo_acima_rpm_alto_s", "Tempo acima do giro alto", "s", 1, "rpm_alto"),
+    ("motor", "tempo_giro_alto_motor_frio_s", "Giro alto com motor frio", "s", 1, "ect_operacao_c"),
+    ("saude", "aquecimento_s", "Tempo de aquecimento", "s", 1, "ect_operacao_c"),
+    ("saude", "ect_estabilizada", "Temperatura estabilizada", "°C", 1, "ect_operacao_c"),
+    ("saude", "tempo_temp_alta_s", "Tempo com temperatura alta", "s", 1, "temp_alta_c"),
+    ("saude", "vbat_media_rodando", "Tensão média rodando", "V", 2, None),
+    ("saude", "vbat_marcha_lenta", "Tensão em marcha lenta", "V", 2, "rpm_marcha_lenta"),
+    ("saude", "queda_sob_carga_v", "Queda de tensão sob carga", "V", 2, None),
+    ("saude", "iat_max", "Temperatura máxima do ar", "°C", 0, None),
+    ("qualidade", "taxa_hz", "Taxa de amostragem", "Hz", 2, None),
 )
 
 
 def comparar(lado_a: dict, lado_b: dict) -> list[dict]:
     """Duas sessoes campo a campo, com a diferenca (B menos A) pronta.
 
-    Diferenca None quando falta um dos lados - zero ali diria "andaram
-    igual", que e outra afirmacao.
+    Duas regras decidem quando a diferenca NAO e calculada:
+
+    1. Falta um dos lados - zero ali diria "andaram igual", que e outra
+       afirmacao.
+    2. A metrica depende de um limite e os limites das duas sessoes sao
+       diferentes. Subtrair "40 s acima do shift light" com o shift light
+       em 5000 de um lado e 6200 do outro produz um numero que nao mede
+       nada: os dois lados responderam perguntas diferentes. A linha
+       continua aparecendo com os dois valores, `diferenca` None e o
+       limite de cada lado, para a tela poder dizer por que.
     """
     def valor(lado, origem, campo):
         raiz = lado.get("resumo") if origem == "resumo" else (
@@ -509,36 +490,64 @@ def comparar(lado_a: dict, lado_b: dict) -> list[dict]:
         )
         return (raiz or {}).get(campo)
 
+    def limite(lado, campo):
+        return (lado.get("limites") or {}).get(campo)
+
     linhas = []
-    for origem, campo, rotulo, unidade, casas in COMPARAVEIS:
+    for origem, campo, rotulo, unidade, casas, dependencia in COMPARAVEIS:
         a = valor(lado_a, origem, campo)
         b = valor(lado_b, origem, campo)
         if a is None and b is None:
             continue          # nenhuma das duas mediu: a linha nao diz nada
+
+        limite_a = limite(lado_a, dependencia) if dependencia else None
+        limite_b = limite(lado_b, dependencia) if dependencia else None
+        divergem = bool(dependencia) and limite_a != limite_b
+
         diferenca = None
-        if a is not None and b is not None:
+        if a is not None and b is not None and not divergem:
             diferenca = round(b - a, casas) if casas else b - a
-        linhas.append(
-            {
-                "campo": campo,
-                "grupo": origem,
-                "rotulo": rotulo,
-                "unidade": unidade,
-                "casas": casas,
-                "a": a,
-                "b": b,
-                "diferenca": diferenca,
-            }
-        )
+
+        linha = {
+            "campo": campo,
+            "grupo": origem,
+            "rotulo": rotulo,
+            "unidade": unidade,
+            "casas": casas,
+            "a": a,
+            "b": b,
+            "diferenca": diferenca,
+        }
+        if dependencia:
+            linha.update(
+                {
+                    "limite_campo": dependencia,
+                    "limite_a": limite_a,
+                    "limite_b": limite_b,
+                    "limites_diferentes": divergem,
+                }
+            )
+        linhas.append(linha)
     return linhas
 
 
-def calcular(amostras: list[Amostra], duracao_s: Optional[float] = None) -> dict:
+def calcular(
+    amostras: list[Amostra],
+    duracao_s: Optional[float] = None,
+    limites: Optional[dict] = None,
+) -> dict:
     """Todas as metricas, agrupadas por categoria.
+
+    `limites` sao os da SESSAO (o snapshot gravado nela, ou o padrao atual
+    quando ela e antiga demais para ter snapshot) - e o que faz o tempo
+    acima do shift light responder pelo mesmo numero que criou os eventos.
+    Sem eles, cai no padrao de fabrica.
 
     Serie vazia devolve a mesma forma com tudo em None, para a tela nao
     precisar de um caminho separado.
     """
+    lim = _limites_efetivos(limites)
+
     if not amostras:
         return {
             "desempenho": {},
@@ -546,12 +555,16 @@ def calcular(amostras: list[Amostra], duracao_s: Optional[float] = None) -> dict
             "saude": {},
             "qualidade": _qualidade([], duracao_s),
             "cobertura": {"tempo_considerado_s": 0.0, "tempo_da_serie_s": 0.0, "tempo_descartado_s": 0.0},
+            "limites": lim,
         }
 
     return {
-        "desempenho": _desempenho(amostras),
-        "motor": _motor(amostras),
-        "saude": _saude(amostras),
+        "desempenho": _desempenho(amostras, lim),
+        "motor": _motor(amostras, lim),
+        "saude": _saude(amostras, lim),
         "qualidade": _qualidade(amostras, duracao_s),
         "cobertura": _cobertura(amostras),
+        # Os limites que estas metricas usaram, junto do resultado: sem
+        # eles a tela nao tem como escrever "acima de 5000 rpm".
+        "limites": lim,
     }

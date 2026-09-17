@@ -10,10 +10,16 @@ from sqlalchemy.exc import IntegrityError
 
 from ..contexto import Contexto, obter_contexto
 from ..modelos import Veiculo
+from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
 from ..repositorios import veiculos as repo_veiculos
 from ..servicos import exportador
-from .esquemas import VeiculoEntrada, eventos_notaveis
+from .esquemas import (
+    LimitesEntrada,
+    VeiculoEntrada,
+    eventos_notaveis,
+    problema_nos_limites,
+)
 
 router = APIRouter(prefix="/api/veiculos", tags=["veiculos"])
 
@@ -159,3 +165,34 @@ def restaurar(veiculo_id: int):
     if not repo_veiculos.restaurar(veiculo_id):
         raise HTTPException(404, "veiculo nao encontrado")
     return repo_veiculos.buscar(veiculo_id)
+
+
+def _exigir_veiculo(veiculo_id: int) -> None:
+    """404 se o carro nao existe. Arquivado passa: e por esta tela que se
+    restaura o veiculo, e os limites dele continuam sendo mostrados."""
+    if repo_veiculos.buscar(veiculo_id, incluir_arquivados=True) is None:
+        raise HTTPException(404, "veiculo nao encontrado")
+
+
+@router.get("/{veiculo_id}/limites")
+def ler_limites(veiculo_id: int):
+    """Os seis limites de alerta do carro. Sao os unicos que existem."""
+    _exigir_veiculo(veiculo_id)
+    return repo_limites.do_veiculo(veiculo_id)
+
+
+@router.put("/{veiculo_id}/limites")
+def gravar_limites(veiculo_id: int, novos: LimitesEntrada):
+    """Grava os seis limites do carro.
+
+    Nao afeta a gravacao em curso: a sessao levou o snapshot dos limites
+    no inicio, de proposito.
+    """
+    _exigir_veiculo(veiculo_id)
+    valores = novos.model_dump()
+
+    problema = problema_nos_limites(valores)
+    if problema is not None:
+        raise HTTPException(422, {"erro": "limites_invalidos", "mensagem": problema})
+
+    return repo_limites.gravar_do_veiculo(veiculo_id, valores)

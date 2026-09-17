@@ -8,10 +8,8 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from sqlmodel import Session
 from starlette.requests import HTTPConnection
 
-from .banco import engine
 from .servicos.gravador import Gravador, Hub
 from .servicos.leitor import NOME_PADRAO, LeitorBase, LeitorBLE, LeitorSimulado
 
@@ -60,13 +58,3 @@ def obter_contexto(conexao: HTTPConnection) -> Contexto:
     WebSocket - assim a mesma dependencia serve o /ws e as rotas HTTP.
     """
     return conexao.app.state.contexto
-
-
-def obter_db():
-    """Uma Session por requisicao, para as rotas que ainda consultam direto.
-
-    So `rotas/limites.py` usa - a tabela tem uma linha e nao ganhou
-    repositorio proprio. O resto do backend passa por `repositorios/`.
-    """
-    with Session(engine) as db:
-        yield db

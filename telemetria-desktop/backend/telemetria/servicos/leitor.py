@@ -185,8 +185,8 @@ class LeitorBLE(LeitorBase):
 class LeitorSimulado(LeitorBase):
     """A fonte de mentira, para trabalhar sem o carro.
 
-    Apaga um bit de `valid` as vezes, de proposito. LIMITE: sem modelo de
-    cambio, entao a marcha estimada nao significa nada aqui.
+    Apaga um bit de `valid` as vezes, de proposito: e assim que se testa
+    a regra do `valid` sem depender de um link BLE ruim de verdade.
     """
 
     def __init__(self, ao_ler, ao_mudar_estado, hz: float = 1.0):

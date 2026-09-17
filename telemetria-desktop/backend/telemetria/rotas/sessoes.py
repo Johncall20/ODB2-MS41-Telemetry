@@ -14,6 +14,7 @@ from fastapi.responses import PlainTextResponse, Response
 from ..contexto import Contexto, obter_contexto
 from ..modelos import TipoEvento, campos_invalidos
 from ..repositorios import amostras as repo_amostras
+from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
 from ..repositorios import veiculos as repo_veiculos
 from ..servicos import exportador, metricas
@@ -39,6 +40,10 @@ def status(ctx: Contexto = Depends(obter_contexto)):
         "detalhe": gravador.detalhe_leitor,
         "gravando": gravador.sessao_id is not None,
         "sessao": sessao.model_dump() if sessao else None,
+        # Os limites que valem NESTA gravacao, para o painel ao vivo marcar
+        # a barra de giro pelo que o detector esta realmente usando, e nao
+        # pelo padrao atual - que pode ter sido editado no meio da sessao.
+        "limites": repo_limites.efetivos_da_sessao(sessao) if sessao else None,
         "amostras_na_sessao": gravador.total_amostras,
         "ultima": gravador.ultima,
     }
@@ -146,9 +151,14 @@ def detalhe(sessao_id: int):
             repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True)
         ),
         "resumo": resumo,
+        # O snapshot dos limites daquela gravacao. Sessao antiga, sem
+        # snapshot, vem com do_snapshot=false e o padrao atual no lugar.
+        "limites": repo_limites.efetivos_da_sessao(sessao),
         # As metricas so saem aqui: esta e a unica rota que ja tem a serie
         # inteira carregada.
-        "metricas": metricas.calcular(amostras, resumo.get("duracao_s")),
+        "metricas": metricas.calcular(
+            amostras, resumo.get("duracao_s"), repo_limites.efetivos_da_sessao(sessao)
+        ),
         # Cada amostra sai com o bitmask ja decodificado. Quem sabe que bit
         # e de qual campo e o backend (modelos.BITS_VALID); a tela de
         # analise so precisa saber onde a linha tem buraco.
@@ -165,7 +175,7 @@ def baixar_csv(sessao_id: int):
     return PlainTextResponse(
         exportador.para_csv(sessao_id),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="sessao-{sessao_id}.csv"'},
+        headers=exportador.cabecalhos_anexo(sessao_id, "csv"),
     )
 
 
@@ -175,7 +185,7 @@ def baixar_json(sessao_id: int):
     return PlainTextResponse(
         exportador.para_json(sessao_id),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="sessao-{sessao_id}.json"'},
+        headers=exportador.cabecalhos_anexo(sessao_id, "json"),
     )
 
 
@@ -194,5 +204,5 @@ def baixar_pdf(sessao_id: int, secoes: str = ""):
     return Response(
         conteudo,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="sessao-{sessao_id}.pdf"'},
+        headers=exportador.cabecalhos_anexo(sessao_id, "pdf"),
     )

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..modelos import Amostra, Evento, Limites, TipoEvento, campos_invalidos
+from ..modelos import Amostra, Evento, LimitesVeiculo, TipoEvento, campos_invalidos
 
 MARGEM_RPM = 300
 MARGEM_TEMP = 4
@@ -23,7 +23,7 @@ class DetectorEventos:
     de um detector novo.
     """
 
-    limites: Limites
+    limites: LimitesVeiculo
     _armado_shift: bool = field(default=True, init=False)
     _armado_rpm: bool = field(default=True, init=False)
     _armado_temp: bool = field(default=True, init=False)

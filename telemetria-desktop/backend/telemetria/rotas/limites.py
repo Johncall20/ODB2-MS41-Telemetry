@@ -1,36 +1,24 @@
 """
-Leitura e gravacao dos limites do detector (tela de Ajustes). Unica rota
-que ainda fala com o banco pela dependencia `obter_db`.
+Os valores SUGERIDOS de limite - o ponto de partida que a tela oferece.
+
+Nao ha mais limite global editavel: os limites sao por veiculo e moram em
+`GET/PUT /api/veiculos/{id}/limites`, em `rotas/veiculos.py`. O que sobra
+aqui e a leitura da constante, para o botao "Usar valores sugeridos" nao
+precisar repetir os numeros no frontend.
 """
 
-from fastapi import APIRouter, Depends
-from sqlmodel import Session
+from fastapi import APIRouter
 
-from ..contexto import obter_db
-from ..modelos import Limites
+from ..repositorios import limites as repo_limites
 
 router = APIRouter(prefix="/api/limites", tags=["limites"])
 
 
-@router.get("")
-def ler(db: Session = Depends(obter_db)):
-    """Os limites em vigor. Devolve os padroes se ninguem gravou ainda."""
-    return db.get(Limites, 1) or Limites()
+@router.get("/sugeridos")
+def ler_sugeridos():
+    """O ponto de partida de um carro novo. Nao e o limite de ninguem.
 
-
-@router.put("")
-def gravar(novos: Limites, db: Session = Depends(obter_db)):
-    """Grava os limites.
-
-    Nao afeta a gravacao em curso: o detector recebeu uma copia no inicio
-    da sessao, de proposito.
+    Quem consome e o botao da tela de limites do veiculo: ele so preenche
+    o formulario, e salvar continua sendo um ato separado.
     """
-    atual = db.get(Limites, 1)
-    if atual is None:
-        atual = Limites(id=1)
-    for campo in ("shift_light_rpm", "rpm_alto", "temp_alta_c", "vbat_baixa"):
-        setattr(atual, campo, getattr(novos, campo))
-    db.add(atual)
-    db.commit()
-    db.refresh(atual)
-    return atual
+    return repo_limites.sugeridos()
