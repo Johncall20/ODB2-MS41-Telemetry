@@ -1,0 +1,77 @@
+/* O que so a tela de cadastro tem: a dica da senha e o bloco de papeis.
+   O resto (layout, campos, botao) vem de `comum.module.css`. */
+
+.dica {
+  font-size: 14px;
+  color: var(--fraco);
+}
+
+.papeis {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;   /* fieldset ignora o flex do pai sem isto */
+}
+
+/* Dois cards, nao os tres do Figma - com dois cabe a descricao embaixo
+   do rotulo. Ver o comentario no topo do CriarConta.jsx. */
+.cartoes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.cartao {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 96px;
+  padding: 14px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  background: var(--fundo-alto);
+  color: var(--apagado);
+  text-align: center;
+  cursor: pointer;
+}
+
+.cartao:hover {
+  color: var(--texto);
+}
+
+.cartao-escolhido {
+  border-color: var(--ambar);
+  background: var(--chip-ambar);
+  color: var(--texto);
+}
+
+/* O radio some da vista mas continua sendo o controle: e ele que o
+   teclado percorre e o leitor de tela anuncia. O foco aparece no card. */
+.radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cartao:focus-within {
+  outline: 2px solid var(--ambar);
+  outline-offset: 2px;
+}
+
+.icone {
+  flex: none;
+}
+
+.cartao-rotulo {
+  font-size: 16px;
+  color: inherit;
+}
+
+.cartao-descricao {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--fraco);
+}

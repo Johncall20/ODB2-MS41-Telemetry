@@ -142,3 +142,35 @@
     opacity: 0.25;
   }
 }
+
+/* Sair, no canto do rodape. So o icone; o texto fica para o leitor de
+   tela, porque o rodape ja esta apertado com nome e papel. */
+.sair {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--apagado);
+  cursor: pointer;
+}
+
+.sair:hover {
+  color: var(--texto);
+  background: var(--realce);
+}
+
+.sair-texto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

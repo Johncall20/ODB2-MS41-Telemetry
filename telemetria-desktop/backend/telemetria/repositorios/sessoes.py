@@ -2,6 +2,12 @@
 Mexe aqui quem mudar o que acontece ao iniciar ou encerrar uma gravacao.
 Os limites saem de `repositorios/limites.py`; aqui eles so entram gravados,
 como o snapshot que `criar()` recebe.
+
+**As leituras de tela filtram pelo dono**, atravessando
+`sessao -> veiculo -> cliente -> usuario`. `usuario_id` e obrigatorio nelas
+(`None` nao filtra, e e o que o seed e o `--recalcular` passam). As
+funcoes de ESCRITA - encerrar, descartar, gravar_agregados - continuam por
+id: quem chama ja autorizou a sessao numa leitura filtrada antes.
 """
 
 from datetime import datetime, timedelta
@@ -14,6 +20,7 @@ from ..banco import sessao_db
 from ..modelos import (
     Evento,
     Sessao,
+    Veiculo,
     StatusSessao,
     TipoEvento,
     agora,
@@ -26,6 +33,21 @@ EVENTOS_DE_ROTINA = (TipoEvento.INICIO_SESSAO, TipoEvento.FIM_SESSAO)
 PERIODOS = {"7d": 7, "30d": 30, "90d": 90, "tudo": None}
 ORDENACOES = ("data", "duracao", "rpm_maximo", "eventos")
 DIRECOES = ("asc", "desc")
+
+
+def _do_usuario(consulta, usuario_id: Optional[int]):
+    """Recorta para as sessoes dos carros de uma conta.
+
+    Um salto: a sessao pertence ao veiculo, e o veiculo guarda o dono. A
+    sessao nao ganhou `usuario_id` proprio de proposito - ela nao tem
+    indice que precise dele, e um terceiro lugar guardando o mesmo dono
+    sairia do ar dos outros dois no primeiro carro que trocasse de mao.
+    """
+    if usuario_id is None:
+        return consulta
+    return consulta.join(Veiculo, Veiculo.id == Sessao.veiculo_id).where(
+        Veiculo.usuario_id == usuario_id
+    )
 
 
 def _colunas_derivadas():
@@ -48,11 +70,11 @@ def _colunas_derivadas():
         ),
         else_=None,
     )
-    # Sessao aberta conta ate agora.
-    duracao = (
-        func.julianday(func.coalesce(Sessao.encerrada_em, agora()))
-        - func.julianday(Sessao.iniciada_em)
-    ) * 86400.0
+    # Sessao aberta conta ate agora. EXTRACT(EPOCH FROM ...) ja devolve
+    # segundos - o julianday do SQLite dava dias e pedia um * 86400.
+    duracao = func.extract(
+        "epoch", func.coalesce(Sessao.encerrada_em, agora()) - Sessao.iniciada_em
+    )
 
     return {
         "duracao": duracao,
@@ -63,6 +85,7 @@ def _colunas_derivadas():
 
 
 def listar_para_tela(
+    usuario_id: Optional[int],
     veiculo_id: Optional[int] = None,
     periodo: str = "tudo",
     data_inicio: Optional[datetime] = None,
@@ -80,7 +103,7 @@ def listar_para_tela(
     de rotina nao conta para `sem_eventos` - existe em toda sessao.
     """
     d = _colunas_derivadas()
-    consulta = select(Sessao)
+    consulta = _do_usuario(select(Sessao), usuario_id)
 
     if veiculo_id is not None:
         consulta = consulta.where(Sessao.veiculo_id == veiculo_id)
@@ -137,18 +160,24 @@ def listar_para_tela(
         return list(db.exec(consulta))
 
 
-def buscar(sessao_id: int) -> Optional[Sessao]:
-    """A sessao pelo id, ou None. Volta desanexada da Session."""
+def buscar(sessao_id: int, usuario_id: Optional[int]) -> Optional[Sessao]:
+    """A sessao pelo id, ou None. Volta desanexada da Session.
+
+    Sessao de outra conta responde None, como sessao inexistente: a rota
+    devolve 404, e nao 403, para nao confirmar que o id existe.
+    """
     with sessao_db() as db:
-        return db.get(Sessao, sessao_id)
+        return db.exec(
+            _do_usuario(select(Sessao).where(Sessao.id == sessao_id), usuario_id)
+        ).first()
 
 
-def listar(veiculo_id: Optional[int] = None) -> list[Sessao]:
+def listar(usuario_id: Optional[int], veiculo_id: Optional[int] = None) -> list[Sessao]:
     """Sessoes, opcionalmente so as de um veiculo, da mais recente para a
     mais antiga. Sessao de veiculo arquivado continua aparecendo: arquivar
     o carro nao esconde o que ele gravou."""
     with sessao_db() as db:
-        consulta = select(Sessao)
+        consulta = _do_usuario(select(Sessao), usuario_id)
         if veiculo_id is not None:
             consulta = consulta.where(Sessao.veiculo_id == veiculo_id)
         return list(db.exec(consulta.order_by(Sessao.iniciada_em.desc())))

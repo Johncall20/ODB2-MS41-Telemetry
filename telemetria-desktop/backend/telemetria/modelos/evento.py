@@ -6,6 +6,7 @@ temperatura alta, queda do link. Quem cria e o DetectorEventos.
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import DateTime
 from sqlmodel import Field, Relationship, SQLModel
 
 from .comum import agora
@@ -23,7 +24,7 @@ class Evento(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     sessao_id: int = Field(foreign_key="sessao.id", index=True)
-    criado_em: datetime = Field(default_factory=agora)
+    criado_em: datetime = Field(default_factory=agora, sa_type=DateTime(timezone=True))
     tipo: TipoEvento
     mensagem: str = ""
 

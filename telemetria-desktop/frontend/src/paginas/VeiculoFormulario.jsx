@@ -5,6 +5,7 @@
   no backend.
 */
 import { useEffect, useState } from "react";
+import { useAutenticacao } from "../hooks/useAutenticacao.js";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { dataHora } from "../formato.js";
@@ -23,7 +24,7 @@ const VAZIO = {
   marca: "",
   modelo: "",
   ano: new Date().getFullYear(),
-  cliente: "",
+  cliente_id: "",
   motor: "",
   ecu: "MS41.1",
   protocolo: "DS2",
@@ -32,6 +33,13 @@ const VAZIO = {
 
 /** Cadastro e edicao de veiculo - a mesma tela, com ou sem id na URL. */
 export function VeiculoFormulario() {
+  const { usuario } = useAutenticacao();
+  // Cliente e coisa de PROFISSIONAL. A conta PARTICULAR nao escolhe: o
+  // backend poe o carro no cliente implicito dela, e a palavra "cliente"
+  // nao aparece na tela.
+  const escolheCliente = usuario?.papel === "PROFISSIONAL";
+  const [clientes, setClientes] = useState([]);
+
   const { id } = useParams();
   const navegar = useNavigate();
   const editando = Boolean(id);
@@ -44,6 +52,11 @@ export function VeiculoFormulario() {
   const [carregando, setCarregando] = useState(editando);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    if (!escolheCliente) return;
+    api.listarClientes().then(setClientes).catch(() => setClientes([]));
+  }, [escolheCliente]);
 
   useEffect(() => {
     if (!editando) return;
@@ -87,9 +100,16 @@ export function VeiculoFormulario() {
     setPlacaArquivada(null);
     setOcupado(true);
     try {
+      // `cliente_id` sai do <select> como texto, e vazio quando a conta e
+      // PARTICULAR (que nem ve o campo). O backend espera numero ou nada:
+      // string vazia seria erro de validacao em vez de "escolhe por mim".
+      const corpo = {
+        ...campos,
+        cliente_id: campos.cliente_id ? Number(campos.cliente_id) : null,
+      };
       const salvo = editando
-        ? await api.editarVeiculo(id, campos)
-        : await api.criarVeiculo(campos);
+        ? await api.editarVeiculo(id, corpo)
+        : await api.criarVeiculo(corpo);
       navegar(`/veiculos/${salvo.id}`, { replace: true });
     } catch (erroSalvar) {
       // Placa de um veiculo arquivado: em vez de erro, oferece restaurar
@@ -134,7 +154,29 @@ export function VeiculoFormulario() {
 
       <form className={c.formulario} onSubmit={salvar}>
         <Campo rotulo="Placa" valor={campos.placa} ao={mudar("placa")} largo />
-        <Campo rotulo="Cliente" valor={campos.cliente} ao={mudar("cliente")} largo />
+        {escolheCliente && (
+          <label className={`${c.campo} ${c.formularioLargo}`}>
+            <span className={c.campoRotulo}>Cliente</span>
+            <select
+              className={c.selecao}
+              value={campos.cliente_id ?? ""}
+              onChange={mudar("cliente_id")}
+              required
+            >
+              <option value="">escolha o cliente</option>
+              {clientes.map((cl) => (
+                <option key={cl.id} value={cl.id}>
+                  {cl.nome}
+                </option>
+              ))}
+            </select>
+            {clientes.length === 0 && (
+              <span className={c.celulaNula}>
+                Nenhum cliente cadastrado — cadastre um em Clientes antes.
+              </span>
+            )}
+          </label>
+        )}
         <Campo rotulo="Marca" valor={campos.marca} ao={mudar("marca")} obrigatorio />
         <Campo rotulo="Modelo" valor={campos.modelo} ao={mudar("modelo")} obrigatorio />
         <Campo rotulo="Ano" tipo="number" valor={campos.ano} ao={mudar("ano")} obrigatorio />

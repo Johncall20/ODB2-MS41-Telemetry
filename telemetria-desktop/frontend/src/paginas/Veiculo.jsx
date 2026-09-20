@@ -60,9 +60,15 @@ export function Veiculo() {
   if (erro) return <Aviso>{erro}</Aviso>;
   if (!dados) return <p className={c.paginaVazia}>Carregando…</p>;
 
-  const { veiculo, sessoes, total_sessoes } = dados;
+  const { veiculo, cliente, sessoes, total_sessoes } = dados;
   const arquivado = Boolean(veiculo.arquivado_em);
-  const legenda = [veiculo.marca && `${veiculo.marca} ${veiculo.modelo}`, veiculo.ano, veiculo.cliente]
+  // O cliente implicito e a propria conta: poe-lo na legenda repetiria o
+  // nome de quem esta olhando em todo carro.
+  const legenda = [
+    veiculo.marca && `${veiculo.marca} ${veiculo.modelo}`,
+    veiculo.ano,
+    cliente && !cliente.implicito ? cliente.nome : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 

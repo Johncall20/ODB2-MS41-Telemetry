@@ -23,11 +23,12 @@ class LimitesVeiculo(SQLModel, table=True):
     # Os sugeridos entram como default so para o carro que nasce agora; a
     # partir dai o valor e dele e nao acompanha mais nada.
     #
-    # Num banco MIGRADO estas colunas continuam anulaveis - o `banco.py`
-    # so sabe acrescentar coluna, nunca alterar - e num banco novo nascem
-    # NOT NULL. E a divergencia aceita: o backfill de `criar_tabelas()`
-    # preenche os nulos antes de qualquer leitura, entao nenhum dos dois
-    # casos chega a devolver None para o modelo.
+    # As seis colunas sao NOT NULL no banco, sem excecao: com Alembic ha um
+    # esquema so, e a divergencia antiga entre banco novo e banco migrado
+    # (que obrigava o backfill a rodar no boot) deixou de existir. Quem
+    # garante que todo veiculo tenha uma linha e
+    # `repositorios/veiculos.criar()`, na mesma transacao do veiculo, e a
+    # migration de dados 0002 para o que entrar por fora.
     shift_light_rpm: int = LIMITES_SUGERIDOS["shift_light_rpm"]
     rpm_alto: int = LIMITES_SUGERIDOS["rpm_alto"]
     temp_alta_c: int = LIMITES_SUGERIDOS["temp_alta_c"]

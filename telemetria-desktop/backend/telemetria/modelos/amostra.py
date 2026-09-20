@@ -6,7 +6,7 @@ cresce: uma linha por ciclo, ~1 Hz durante toda a gravacao.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Index
+from sqlalchemy import DateTime, Index
 from sqlmodel import Field, Relationship, SQLModel
 
 from .comum import agora
@@ -26,7 +26,7 @@ class Amostra(SQLModel, table=True):
     # t_ms = millis() do ESP32 no instante da publicacao.
     # recebida_em = relogio do PC, para cruzar com video/planilha externa.
     t_ms: int
-    recebida_em: datetime = Field(default_factory=agora)
+    recebida_em: datetime = Field(default_factory=agora, sa_type=DateTime(timezone=True))
 
     rpm: int = 0
     ect: int = 0

@@ -6,7 +6,7 @@ arquivar preenche `arquivado_em` e preserva as sessoes.
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Index, text
+from sqlalchemy import DateTime, Index, text
 from sqlmodel import Field, Relationship, SQLModel
 
 from .comum import agora
@@ -31,15 +31,22 @@ class Veiculo(SQLModel, table=True):
     permite a busca casar e o indice unico funcionar.
     """
 
-    # Unicidade so entre os ativos: arquivar libera a placa, e o mesmo
-    # carro pode ser cadastrado de novo depois - ou restaurado, que e o
-    # que a tela oferece.
+    # Unicidade da placa **por conta**, e so entre os ativos: arquivar
+    # libera a placa, e o mesmo carro pode ser cadastrado de novo depois -
+    # ou restaurado, que e o que a tela oferece.
+    #
+    # `usuario_id` entra no indice, e e por isso que ele existe como coluna
+    # desta tabela mesmo o dono ja vindo por `cliente -> usuario`:
+    # unicidade por conta e garantia que tem de morar no banco, e o
+    # Postgres so indexa coluna da propria tabela. Por `(cliente_id,
+    # placa)` o mesmo mecanico duplicaria a placa entre dois clientes - que
+    # e justamente o erro de digitacao que o indice existe para pegar.
     __table_args__ = (
         Index(
             "ix_veiculo_placa_ativa",
+            "usuario_id",
             "placa",
             unique=True,
-            sqlite_where=text("arquivado_em IS NULL"),
             postgresql_where=text("arquivado_em IS NULL"),
         ),
     )
@@ -57,13 +64,27 @@ class Veiculo(SQLModel, table=True):
     motor: str = ""
     protocolo: str = "DS2"
     quilometragem: int = 0
-    cliente: str = ""
 
-    criado_em: datetime = Field(default_factory=agora)
+    # O dono, em dois campos que TEM DE CONCORDAR:
+    # `veiculo.usuario_id == veiculo.cliente.usuario_id`.
+    #
+    # `cliente_id` e a relacao de negocio - de quem e o carro. `usuario_id`
+    # e a mesma informacao desnormalizada, e existe por duas razoes: o
+    # indice unico da placa por conta (acima), e tirar um JOIN de toda
+    # consulta filtrada por dono. Quem garante a concordancia e
+    # `rotas/veiculos.py`, que so aceita cliente da propria conta - ver
+    # "Propriedade" no CLAUDE.md.
+    #
+    # `cliente_id` continua anulavel: a migration 0004 nao tinha a quem
+    # atribuir carro de um banco sem conta nenhuma.
+    usuario_id: int = Field(foreign_key="usuario.id", index=True)
+    cliente_id: Optional[int] = Field(default=None, foreign_key="cliente.id", index=True)
+
+    criado_em: datetime = Field(default_factory=agora, sa_type=DateTime(timezone=True))
 
     # Soft delete: nulo = ativo. O veiculo sai das listas mas as sessoes
     # dele continuam gravadas e acessiveis - o historico e o dado que o
     # TCC precisa defender, entao nada e removido de verdade.
-    arquivado_em: Optional[datetime] = None
+    arquivado_em: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
 
     sessoes: List["Sessao"] = Relationship(back_populates="veiculo")

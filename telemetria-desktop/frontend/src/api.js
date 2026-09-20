@@ -10,6 +10,10 @@ async function pedir(caminho, opcoes = {}) {
     headers: opcoes.corpo ? { "Content-Type": "application/json" } : undefined,
     method: opcoes.metodo || "GET",
     body: opcoes.corpo ? JSON.stringify(opcoes.corpo) : undefined,
+    // O cookie de sessao e httpOnly: o JS nao o le nem o anexa a mao, e e
+    // isto que manda o navegador envia-lo. "include" e nao "same-origin"
+    // porque o `npm run dev` sem proxy chama a 8000 de outra origem.
+    credentials: "include",
   });
   if (!r.ok) {
     let bruto = null;
@@ -54,6 +58,21 @@ function _query(filtros) {
 }
 
 export const api = {
+  // --- autenticacao. O token nunca aparece aqui: vive no cookie httpOnly
+  // que o backend define, e o navegador o manda sozinho.
+  cadastro: (dados) => pedir("/api/auth/cadastro", { metodo: "POST", corpo: dados }),
+  login: (credenciais) => pedir("/api/auth/login", { metodo: "POST", corpo: credenciais }),
+  logout: () => pedir("/api/auth/logout", { metodo: "POST" }),
+  eu: () => pedir("/api/auth/eu"),
+
+  // O papel e preferencia de interface: a rota e a mesma para os dois, e
+  // quem esconde a tela de Clientes do PARTICULAR e o React.
+  trocarPapel: (papel) => pedir("/api/auth/eu", { metodo: "PUT", corpo: { papel } }),
+  listarClientes: () => pedir("/api/clientes"),
+  criarCliente: (dados) => pedir("/api/clientes", { metodo: "POST", corpo: dados }),
+  editarCliente: (id, dados) =>
+    pedir(`/api/clientes/${id}`, { metodo: "PUT", corpo: dados }),
+
   listarVeiculos: (filtros = {}) => pedir(`/api/veiculos${_query(filtros)}`),
   lerVeiculo: (id) => pedir(`/api/veiculos/${id}`),
   criarVeiculo: (dados) => pedir("/api/veiculos", { metodo: "POST", corpo: dados }),

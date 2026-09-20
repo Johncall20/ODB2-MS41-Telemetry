@@ -30,6 +30,18 @@ class TipoEvento(str, Enum):
     LEITURA_INCOMPLETA = "LEITURA_INCOMPLETA"
 
 
+class PapelUsuario(str, Enum):
+    """Como a conta usa o app.
+
+    E **preferencia de interface, nao fronteira de seguranca**: as duas
+    veem so os proprios dados, e o papel decide o que a tela mostra. Quem
+    separa conta de conta e o dono do registro, nao o papel.
+    """
+
+    PROFISSIONAL = "PROFISSIONAL"   # atende carros de clientes
+    PARTICULAR = "PARTICULAR"       # cuida do proprio carro
+
+
 class EstadoLeitor(str, Enum):
     """Em que pe esta a ligacao com o adaptador BLE."""
 

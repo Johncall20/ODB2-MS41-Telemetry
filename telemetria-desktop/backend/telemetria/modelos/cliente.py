@@ -1,0 +1,29 @@
+"""
+O dono do carro, na conta de alguem. Nome e contato, e nada mais.
+
+A cadeia de propriedade do sistema inteiro e `veiculo -> cliente ->
+usuario`: e por ela que toda consulta de rota filtra. Sessao, amostra e
+evento nao tem dono proprio - herdam o do veiculo.
+
+A conta PARTICULAR tem um cliente **implicito**, que e a propria pessoa: o
+modelo e o mesmo para os dois papeis, e o que muda e so a interface
+esconder o cadastro de clientes. Duas arvores de consulta - uma com
+cliente, outra sem - dobrariam cada filtro de veiculo que ja existe.
+"""
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class Cliente(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    usuario_id: int = Field(foreign_key="usuario.id", index=True)
+    nome: str
+    contato: str = ""
+
+    # Marca o cliente que o sistema criou sozinho para uma conta
+    # PARTICULAR. Serve para a interface nao oferecer "editar cliente" ao
+    # PARTICULAR, e para nao criar um segundo implicito quando um
+    # PROFISSIONAL vira PARTICULAR.
+    implicito: bool = False

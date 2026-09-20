@@ -3,10 +3,10 @@ Uma gravacao, do inicio ao fim. Centro do modelo: amostra, evento e os
 agregados congelados no encerramento penduram todos aqui.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Index
+from sqlalchemy import DateTime, Index
 from sqlmodel import Field, Relationship, SQLModel
 
 from .comum import agora
@@ -26,8 +26,8 @@ class Sessao(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     veiculo_id: int = Field(foreign_key="veiculo.id", index=True)
-    iniciada_em: datetime = Field(default_factory=agora)
-    encerrada_em: Optional[datetime] = None
+    iniciada_em: datetime = Field(default_factory=agora, sa_type=DateTime(timezone=True))
+    encerrada_em: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
     status: StatusSessao = StatusSessao.ATIVA
     observacao: str = ""
 
@@ -76,13 +76,7 @@ class Sessao(SQLModel, table=True):
     def duracao_s(self) -> float:
         """Quanto a sessao durou; a aberta conta ate agora.
 
-        O SQLite devolve datetime sem fuso e o gravado e UTC: marcar os
-        dois lados evita subtrair um com fuso de um sem.
+        Sem remendo de fuso: as colunas sao TIMESTAMP WITH TIME ZONE e o
+        driver devolve datetime com fuso, do mesmo jeito que `agora()`.
         """
-        fim = self.encerrada_em or agora()
-        inicio = self.iniciada_em
-        if inicio.tzinfo is None:
-            inicio = inicio.replace(tzinfo=timezone.utc)
-        if fim.tzinfo is None:
-            fim = fim.replace(tzinfo=timezone.utc)
-        return (fim - inicio).total_seconds()
+        return ((self.encerrada_em or agora()) - self.iniciada_em).total_seconds()

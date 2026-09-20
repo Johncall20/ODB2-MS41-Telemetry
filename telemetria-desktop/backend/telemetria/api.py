@@ -9,13 +9,14 @@ import argparse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as ErroHTTP
 
-from .banco import criar_tabelas
 from .contexto import Contexto
+from .rotas import auth as rotas_auth
+from .rotas import clientes as rotas_clientes
 from .rotas import limites as rotas_limites
 from .rotas import relatorios as rotas_relatorios
 from .rotas import sessoes as rotas_sessoes
@@ -41,12 +42,19 @@ def _avisar_pendentes() -> None:
 
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
-    """Prepara o banco e liga o leitor ao subir; desliga tudo ao descer.
+    """Liga o leitor ao subir; desliga tudo ao descer.
+
+    **Nao mexe no esquema.** Quem cria e altera tabela e o Alembic, e
+    `alembic upgrade head` e **passo manual**, rodado antes de subir o app.
+    Nao ha entrypoint que o faca por voce. App que altera esquema no boot
+    esconde a migration que falhou e deixa dois caminhos de evolucao do
+    banco; por isso o boot aqui nao tenta consertar nada - se o esquema
+    estiver atrasado, as rotas falham e o erro aponta para a migration que
+    falta.
 
     O que vem depois do `yield` roda no encerramento, e e o que garante
     que o buffer do gravador chegue ao disco antes de o processo morrer.
     """
-    criar_tabelas()
     _avisar_pendentes()
     await app.state.contexto.iniciar()
     yield
@@ -61,14 +69,31 @@ app.state.contexto = Contexto()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    # allow_credentials para o cookie de sessao atravessar quando o Vite
+    # roda sem proxy. Com credenciais, o CORS proibe `allow_origins=["*"]`
+    # - e ainda bem: origem curinga com cookie seria qualquer site do mundo
+    # falando pela conta de quem esta logado.
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(rotas_sessoes.router)
-app.include_router(rotas_veiculos.router)
-app.include_router(rotas_limites.router)
-app.include_router(rotas_relatorios.router)
+# Auth fica FORA da protecao, senao ninguem conseguiria entrar.
+app.include_router(rotas_auth.router)
+
+# Todo o resto do /api exige login. A dependencia entra no router inteiro,
+# e nao rota a rota: assim rota nova nasce protegida por omissao, e deixar
+# uma aberta passa a ser um ato explicito em vez de um esquecimento.
+PROTEGIDO = [Depends(rotas_auth.usuario_atual)]
+app.include_router(rotas_sessoes.router, dependencies=PROTEGIDO)
+app.include_router(rotas_veiculos.router, dependencies=PROTEGIDO)
+app.include_router(rotas_clientes.router, dependencies=PROTEGIDO)
+app.include_router(rotas_limites.router, dependencies=PROTEGIDO)
+app.include_router(rotas_relatorios.router, dependencies=PROTEGIDO)
+
+# O /ws fica de fora: a dependencia levanta HTTPException, que num
+# handshake de websocket viraria erro sem significado para o cliente.
+# Autenticar o socket e trabalho proprio, e esta fora desta fase.
 app.include_router(rotas_websocket.router)
 
 
@@ -105,6 +130,14 @@ def main() -> None:
     )
     p.add_argument("--porta", type=int, default=8000)
     p.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help=(
+            "endereco de escuta. O padrao so aceita conexao da propria maquina, "
+            "que e como o app roda em desenvolvimento; hospedar pede 0.0.0.0"
+        ),
+    )
+    p.add_argument(
         "--recalcular",
         nargs="?",
         const="pendentes",
@@ -122,16 +155,15 @@ def main() -> None:
 
     app.state.contexto.configurar(usar_simulador=args.sim, nome_ble=args.nome)
 
-    uvicorn.run(app, host="127.0.0.1", port=args.porta, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.porta, log_level="info")
 
 
 def _recalcular(todas: bool) -> None:
     """Roda o recalculo sem subir o servidor.
 
     Nao abre o leitor nem o websocket de proposito: e uma tarefa de banco,
-    e rodar com o app no ar so competiria pelo SQLite.
+    e o app no ar nao precisa estar no caminho dela.
     """
-    criar_tabelas()
 
     def imprimir(sessao_id: int, dados: dict) -> None:
         print(

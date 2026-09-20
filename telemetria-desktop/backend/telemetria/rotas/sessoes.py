@@ -12,33 +12,41 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse, Response
 
 from ..contexto import Contexto, obter_contexto
-from ..modelos import TipoEvento, campos_invalidos
+from ..modelos import TipoEvento, Usuario, campos_invalidos
 from ..repositorios import amostras as repo_amostras
 from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
 from ..repositorios import veiculos as repo_veiculos
 from ..servicos import exportador, metricas
 from ..servicos.gravador import MINIMO_AMOSTRAS
+from .auth import usuario_atual
 from .esquemas import InicioSessao, eventos_notaveis, veiculo_resumido
 
 router = APIRouter(tags=["sessoes"])
 
 
 @router.get("/api/status")
-def status(ctx: Contexto = Depends(obter_contexto)):
+def status(
+    ctx: Contexto = Depends(obter_contexto),
+    usuario: Usuario = Depends(usuario_atual),
+):
     """Como esta o sistema agora: fonte, leitor, gravacao e ultima leitura.
 
     E o que a interface consulta ao abrir, antes de o websocket comecar a
     empurrar novidade.
     """
     gravador = ctx.gravador
-    sessao = repo_sessoes.buscar(gravador.sessao_id) if gravador.sessao_id else None
+    # A sessao ativa so aparece para o dono do carro: de outra conta o
+    # buscar responde None, e o status fica como "nao gravando".
+    sessao = (
+        repo_sessoes.buscar(gravador.sessao_id, usuario.id) if gravador.sessao_id else None
+    )
     return {
         "fonte": ctx.fonte,
         "nome_ble": ctx.nome_ble,
         "leitor": gravador.estado_leitor.value,
         "detalhe": gravador.detalhe_leitor,
-        "gravando": gravador.sessao_id is not None,
+        "gravando": sessao is not None,
         "sessao": sessao.model_dump() if sessao else None,
         # Os limites que valem NESTA gravacao, para o painel ao vivo marcar
         # a barra de giro pelo que o detector esta realmente usando, e nao
@@ -61,6 +69,7 @@ def listar(
     integridade_minima: Optional[float] = Query(None, ge=0, le=100),
     ordenar_por: Literal["data", "duracao", "rpm_maximo", "eventos"] = "data",
     direcao: Literal["asc", "desc"] = "desc",
+    usuario: Usuario = Depends(usuario_atual),
 ):
     """Lista da tela de Sessoes, ja filtrada e ordenada pelo SQL.
 
@@ -68,6 +77,7 @@ def listar(
     ATIVA cai no caminho lento. data_inicio/data_fim mandam no periodo.
     """
     sessoes = repo_sessoes.listar_para_tela(
+        usuario.id,
         veiculo_id=veiculo_id,
         periodo=periodo,
         data_inicio=data_inicio,
@@ -81,7 +91,7 @@ def listar(
     )
     # Arquivado entra: a sessao de um carro arquivado continua listada, e a
     # tela precisa do carro para marcar a placa.
-    carros = {v.id: v for v in repo_veiculos.listar(incluir_arquivados=True)}
+    carros = {v.id: v for v in repo_veiculos.listar(usuario.id, incluir_arquivados=True)}
     eventos = repo_sessoes.eventos_por_sessao([s.id for s in sessoes])
     return [
         {
@@ -95,11 +105,15 @@ def listar(
 
 
 @router.post("/api/sessoes")
-async def iniciar(entrada: InicioSessao, ctx: Contexto = Depends(obter_contexto)):
+async def iniciar(
+    entrada: InicioSessao,
+    ctx: Contexto = Depends(obter_contexto),
+    usuario: Usuario = Depends(usuario_atual),
+):
     """Comeca a gravar para um veiculo. Uma sessao por vez."""
     if ctx.gravador.sessao_id is not None:
         raise HTTPException(409, "ja existe uma sessao ativa")
-    veiculo = repo_veiculos.buscar(entrada.veiculo_id, incluir_arquivados=True)
+    veiculo = repo_veiculos.buscar(entrada.veiculo_id, usuario.id, incluir_arquivados=True)
     if veiculo is None:
         raise HTTPException(404, "veiculo nao encontrado")
     # Arquivado nao recebe sessao nova: senao daria para criar justamente o
@@ -108,18 +122,31 @@ async def iniciar(entrada: InicioSessao, ctx: Contexto = Depends(obter_contexto)
     # recusado aqui, em vez de virar um 404 enganoso.
     if veiculo.arquivado_em is not None:
         raise HTTPException(409, "este veiculo esta arquivado; restaure antes de gravar")
-    sessao = ctx.gravador.iniciar_sessao(entrada.veiculo_id, entrada.observacao)
-    await ctx.hub.enviar("sessao", {"id": sessao["id"], "status": "ATIVA"})
+    sessao = ctx.gravador.iniciar_sessao(
+        entrada.veiculo_id, entrada.observacao, dono_id=usuario.id
+    )
+    await ctx.hub.enviar(
+        "sessao", {"id": sessao["id"], "status": "ATIVA"}, dono=usuario.id
+    )
     return sessao
 
 
 @router.post("/api/sessoes/encerrar")
-async def encerrar(ctx: Contexto = Depends(obter_contexto)):
+async def encerrar(
+    ctx: Contexto = Depends(obter_contexto),
+    usuario: Usuario = Depends(usuario_atual),
+):
     """Encerra a gravacao.
 
     Sessao curta demais e descartada em vez de gravada; nesse caso a
     resposta diz isso, e nao ha sessao para a tela abrir depois.
     """
+    # So o dono encerra: de outra conta a sessao ativa nem e visivel, e
+    # encerrar a gravacao alheia seria pior que nao ver.
+    if ctx.gravador.sessao_id is not None:
+        if repo_sessoes.buscar(ctx.gravador.sessao_id, usuario.id) is None:
+            raise HTTPException(409, "nenhuma sessao ativa")
+
     resultado = await ctx.gravador.encerrar_sessao()
     if resultado is None:
         raise HTTPException(409, "nenhuma sessao ativa")
@@ -134,13 +161,13 @@ async def encerrar(ctx: Contexto = Depends(obter_contexto)):
 
 
 @router.get("/api/sessoes/{sessao_id}")
-def detalhe(sessao_id: int):
+def detalhe(sessao_id: int, usuario: Usuario = Depends(usuario_atual)):
     """Tudo de uma sessao: resumo, metricas, a serie inteira e os eventos.
 
     E a rota mais pesada do app, e a unica que devolve amostra. E dela que
     a tela de Analise desenha os graficos.
     """
-    sessao = repo_sessoes.buscar(sessao_id)
+    sessao = repo_sessoes.buscar(sessao_id, usuario.id)
     if sessao is None:
         raise HTTPException(404, "sessao nao encontrada")
     amostras = repo_amostras.listar(sessao_id)
@@ -148,7 +175,7 @@ def detalhe(sessao_id: int):
     return {
         "sessao": sessao.model_dump(),
         "veiculo": veiculo_resumido(
-            repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True)
+            repo_veiculos.buscar(sessao.veiculo_id, usuario.id, incluir_arquivados=True)
         ),
         "resumo": resumo,
         # O snapshot dos limites daquela gravacao. Sessao antiga, sem
@@ -169,9 +196,20 @@ def detalhe(sessao_id: int):
     }
 
 
+def _exigir_sessao(sessao_id: int, usuario_id: int) -> None:
+    """404 se a sessao nao existe OU nao e desta conta.
+
+    E esta checagem que autoriza o `repositorios/amostras.py` a trabalhar
+    so por `sessao_id`, sem filtrar por dono.
+    """
+    if repo_sessoes.buscar(sessao_id, usuario_id) is None:
+        raise HTTPException(404, "sessao nao encontrada")
+
+
 @router.get("/api/sessoes/{sessao_id}/csv", response_class=PlainTextResponse)
-def baixar_csv(sessao_id: int):
+def baixar_csv(sessao_id: int, usuario: Usuario = Depends(usuario_atual)):
     """CSV da sessao, uma linha por amostra. Celula vazia = sem resposta."""
+    _exigir_sessao(sessao_id, usuario.id)
     return PlainTextResponse(
         exportador.para_csv(sessao_id),
         media_type="text/csv",
@@ -180,8 +218,9 @@ def baixar_csv(sessao_id: int):
 
 
 @router.get("/api/sessoes/{sessao_id}/json", response_class=PlainTextResponse)
-def baixar_json(sessao_id: int):
+def baixar_json(sessao_id: int, usuario: Usuario = Depends(usuario_atual)):
     """JSON completo da sessao, para reprocessar fora do app."""
+    _exigir_sessao(sessao_id, usuario.id)
     return PlainTextResponse(
         exportador.para_json(sessao_id),
         media_type="application/json",
@@ -190,12 +229,15 @@ def baixar_json(sessao_id: int):
 
 
 @router.get("/api/sessoes/{sessao_id}/pdf")
-def baixar_pdf(sessao_id: int, secoes: str = ""):
+def baixar_pdf(
+    sessao_id: int, secoes: str = "", usuario: Usuario = Depends(usuario_atual)
+):
     """Relatorio em PDF; `secoes` separada por virgula.
 
     Vazio usa o padrao, sem a tabela de amostras - numa sessao longa ela
     vira dezenas de paginas.
     """
+    _exigir_sessao(sessao_id, usuario.id)
     pedidas = [s.strip() for s in secoes.split(",") if s.strip()]
     try:
         conteudo = exportador.para_pdf(sessao_id, pedidas or exportador.SECOES_PADRAO)

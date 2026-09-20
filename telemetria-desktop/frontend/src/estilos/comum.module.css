@@ -510,3 +510,78 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ------------------------------------------- telas de entrada (fora do Shell)
+
+   Login e Criar conta (nodes 2:2 e 3:529) usam o mesmo esqueleto: painel
+   da marca a esquerda, coluna de formulario de 440px a direita. Por isso
+   moram aqui, e nao no module de cada pagina.
+
+   Os campos e botoes reusam `.campo`, `.entrada`, `.botao` e
+   `.botao-primario` acima - as medidas do Figma (56px, raio 6, 17px) sao
+   as mesmas que o resto do app ja usa. */
+
+.entrada-tela {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  background: var(--fundo);
+}
+
+.entrada-lado {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px;
+  min-width: 0;
+}
+
+.entrada-coluna {
+  width: 440px;
+  max-width: 100%;
+}
+
+.entrada-titulo {
+  margin: 0;
+  font-size: 31px;
+  font-weight: 500;
+  letter-spacing: -0.31px;
+  color: var(--texto);
+}
+
+.entrada-subtitulo {
+  margin: 10px 0 0;
+  font-size: 17px;
+  color: var(--apagado);
+}
+
+/* Os campos da tela de entrada sao empilhados, nao em grade de tres
+   colunas como o `.formulario` das telas internas. */
+.entrada-campos {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  margin-top: 30px;
+}
+
+.entrada-acao {
+  width: 100%;
+  margin-top: 32px;
+}
+
+.entrada-rodape {
+  margin: 28px 0 0;
+  font-size: 16px;
+  text-align: center;
+  color: var(--apagado);
+}
+
+.entrada-rodape a {
+  color: var(--texto);
+  text-decoration: none;
+}
+
+.entrada-rodape a:hover {
+  text-decoration: underline;
+}

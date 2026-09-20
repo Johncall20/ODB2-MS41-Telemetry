@@ -1,0 +1,73 @@
+/* Ajustes da conta. Os cards de papel sao os mesmos do cadastro, mas o
+   module do CriarConta e dele; repetir aqui e o preco de nao inventar uma
+   classe compartilhada para duas telas que podem divergir. */
+
+.dados {
+  margin: 0 0 34px;
+  font-size: 16px;
+  color: var(--apagado);
+}
+
+.dados strong {
+  color: var(--texto);
+  font-weight: 400;
+}
+
+.cartoes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 460px;
+  margin-top: 10px;
+}
+
+.cartao {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 96px;
+  padding: 14px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  background: var(--fundo-alto);
+  color: var(--apagado);
+  text-align: center;
+  cursor: pointer;
+}
+
+.cartao:hover { color: var(--texto); }
+
+.cartao-escolhido {
+  border-color: var(--ambar);
+  background: var(--chip-ambar);
+  color: var(--texto);
+}
+
+.radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cartao:focus-within {
+  outline: 2px solid var(--ambar);
+  outline-offset: 2px;
+}
+
+.icone { flex: none; }
+
+.cartao-rotulo { font-size: 16px; color: inherit; }
+
+.cartao-descricao {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--fraco);
+}
+
+.acoes {
+  display: flex;
+  gap: 14px;
+  margin-top: 26px;
+}

@@ -5,9 +5,18 @@ e os montadores de dicionario que mais de uma rota reaproveita.
 
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from ..modelos import Evento, TipoEvento, Veiculo, normalizar_placa
+from ..modelos import (
+    Cliente,
+    Evento,
+    PapelUsuario,
+    TipoEvento,
+    Usuario,
+    Veiculo,
+    normalizar_placa,
+)
+from ..servicos.autenticacao import SENHA_MINIMA
 
 
 class VeiculoEntrada(BaseModel):
@@ -21,7 +30,11 @@ class VeiculoEntrada(BaseModel):
     motor: str = ""
     protocolo: str = "DS2"
     quilometragem: int = 0
-    cliente: str = ""
+
+    # O dono. Opcional na ENTRADA porque a conta PARTICULAR nao escolhe
+    # cliente - a rota preenche com o implicito dela. Para o
+    # PROFISSIONAL a rota exige.
+    cliente_id: Optional[int] = None
 
     @field_validator("placa")
     @classmethod
@@ -35,6 +48,93 @@ class InicioSessao(BaseModel):
 
     veiculo_id: int
     observacao: str = ""
+
+
+class CadastroEntrada(BaseModel):
+    """O formulario de criar conta.
+
+    `EmailStr` valida o formato; o resto da normalizacao e nossa, para o
+    banco ter uma forma so do mesmo e-mail.
+    """
+
+    nome: str = Field(min_length=1)
+    email: EmailStr
+    # A regra de tamanho e do backend, nao da tela: validacao so no React
+    # cai por terra em qualquer cliente que nao seja o navegador.
+    senha: str = Field(min_length=SENHA_MINIMA)
+    papel: PapelUsuario = PapelUsuario.PROFISSIONAL
+
+    @field_validator("email")
+    @classmethod
+    def _email_normalizado(cls, valor: str) -> str:
+        """Minusculo e sem espaco nas pontas.
+
+        Sem isto, "Leo@x.com" e "leo@x.com" viram duas contas e a pessoa
+        nao entende por que o login falha.
+        """
+        return valor.strip().lower()
+
+    @field_validator("nome")
+    @classmethod
+    def _nome_limpo(cls, valor: str) -> str:
+        return valor.strip()
+
+
+class LoginEntrada(BaseModel):
+    """E-mail e senha. Sem `min_length` na senha de proposito: senha curta
+    aqui e credencial errada, e a resposta tem de ser a mesma de senha
+    errada - um 422 diferente contaria que a conta existe."""
+
+    email: EmailStr
+    senha: str
+
+    @field_validator("email")
+    @classmethod
+    def _email_normalizado(cls, valor: str) -> str:
+        return valor.strip().lower()
+
+
+def usuario_publico(usuario: Usuario) -> dict:
+    """O que uma conta mostra de si.
+
+    Campo a campo, nunca `model_dump()`: assim o `senha_hash` nao escapa
+    hoje, e a coluna sensivel que alguem acrescentar amanha tambem nao.
+    """
+    return {
+        "id": usuario.id,
+        "nome": usuario.nome,
+        "email": usuario.email,
+        "papel": usuario.papel.value,
+        "criado_em": usuario.criado_em,
+    }
+
+
+class ClienteEntrada(BaseModel):
+    """O formulario de cliente."""
+
+    nome: str = Field(min_length=1)
+    contato: str = ""
+
+    @field_validator("nome", "contato")
+    @classmethod
+    def _sem_espaco_nas_pontas(cls, valor: str) -> str:
+        return valor.strip()
+
+
+class PapelEntrada(BaseModel):
+    """A troca de papel, nos ajustes da conta."""
+
+    papel: PapelUsuario
+
+
+def cliente_publico(cliente: Cliente) -> dict:
+    """O que um cliente mostra. Campo a campo, como o usuario."""
+    return {
+        "id": cliente.id,
+        "nome": cliente.nome,
+        "contato": cliente.contato,
+        "implicito": cliente.implicito,
+    }
 
 
 class LimitesEntrada(BaseModel):

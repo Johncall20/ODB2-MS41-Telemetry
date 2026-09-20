@@ -1,0 +1,22 @@
+/* Tela de Clientes. A tabela e os filtros vem de `comum.module.css`; aqui
+   fica so o formulario de cadastro embutido. */
+
+.form-linha {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  margin: 26px 0 34px;
+  max-width: 900px;
+}
+
+.form-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+}
+
+.contato {
+  color: var(--apagado);
+}

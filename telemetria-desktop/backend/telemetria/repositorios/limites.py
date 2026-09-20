@@ -12,7 +12,7 @@ from typing import Optional
 from sqlmodel import select
 
 from ..banco import sessao_db
-from ..modelos import CAMPOS_LIMITE, LIMITES_SUGERIDOS, LimitesVeiculo, Sessao, Veiculo
+from ..modelos import CAMPOS_LIMITE, LIMITES_SUGERIDOS, LimitesVeiculo, Sessao
 
 
 def _solta(linha: LimitesVeiculo) -> LimitesVeiculo:
@@ -56,9 +56,10 @@ def _buscar(db, veiculo_id: int) -> Optional[LimitesVeiculo]:
 def do_veiculo(veiculo_id: int) -> dict:
     """Os seis limites do carro.
 
-    Carro sem linha nao deveria existir - `criar()` grava uma e o backfill
-    cobre os antigos -, mas se aparecer, os sugeridos respondem em vez de
-    estourar: a tela de limites e justamente onde isso se conserta.
+    Carro sem linha nao deveria existir - `repositorios/veiculos.criar()`
+    grava uma na mesma transacao, e a migration de dados cobre o resto -,
+    mas se aparecer, os sugeridos respondem em vez de estourar: a tela de
+    limites e justamente onde isso se conserta.
     """
     with sessao_db() as db:
         linha = _buscar(db, veiculo_id)
@@ -86,56 +87,6 @@ def efetivos_do_veiculo(veiculo_id: int) -> LimitesVeiculo:
         if linha is None:
             return LimitesVeiculo(veiculo_id=veiculo_id, **LIMITES_SUGERIDOS)
         return _solta(linha)
-
-
-def garantir_linhas() -> int:
-    """Da limites a todo carro que ainda nao tem, e preenche campo nulo.
-
-    Roda no `criar_tabelas()`. Duas situacoes, as duas de banco antigo:
-    veiculo cadastrado antes de a linha de limites existir, e linha criada
-    quando os campos eram anulaveis (nulo queria dizer "herda o padrao", e
-    nao ha mais padrao de quem herdar).
-
-    **Nunca sobrescreve valor ja gravado** - so preenche o que falta.
-    Um carro com shift light proprio em 5000 continua em 5000.
-
-    Devolve quantas linhas mexeu; idempotente, entao a segunda execucao
-    devolve zero.
-    """
-    tabela = LimitesVeiculo.__table__
-    colunas = [getattr(LimitesVeiculo, campo) for campo in CAMPOS_LIMITE]
-    mexidas = 0
-
-    with sessao_db() as db:
-        # Seleciona COLUNAS, nao o modelo: a linha antiga pode ter nulo
-        # onde o modelo agora exige int, e montar o objeto estouraria na
-        # validacao - justamente na linha que se quer consertar. Por isso o
-        # insert e o update tambem vao pela tabela, e nao pelo ORM.
-        existentes = {
-            linha[0]: dict(zip(CAMPOS_LIMITE, linha[1:]))
-            for linha in db.exec(select(LimitesVeiculo.veiculo_id, *colunas))
-        }
-
-        for veiculo_id in db.exec(select(Veiculo.id)):
-            gravados = existentes.get(veiculo_id)
-
-            if gravados is None:
-                db.execute(tabela.insert().values(veiculo_id=veiculo_id, **LIMITES_SUGERIDOS))
-                mexidas += 1
-                continue
-
-            faltando = {c: LIMITES_SUGERIDOS[c] for c in CAMPOS_LIMITE if gravados[c] is None}
-            if faltando:
-                db.execute(
-                    tabela.update()
-                    .where(tabela.c.veiculo_id == veiculo_id)
-                    .values(**faltando)
-                )
-                mexidas += 1
-
-        if mexidas:
-            db.commit()
-    return mexidas
 
 
 def efetivos_da_sessao(sessao: Sessao) -> dict:

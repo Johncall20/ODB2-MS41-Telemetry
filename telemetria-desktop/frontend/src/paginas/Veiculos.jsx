@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, Search, X } from "lucide-react";
 import { api } from "../api.js";
+import { useAutenticacao } from "../hooks/useAutenticacao.js";
 import { haQuantoTempo, placa } from "../formato.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Chip } from "../componentes/ui/Chip.jsx";
@@ -63,15 +64,28 @@ const SITUACOES = [
 ];
 
 // Coluna da tabela -> criterio de ordenacao. A ultima coluna e a seta.
+// `papel` marca a coluna que so uma das contas ve. A PARTICULAR tem um
+// cliente implicito que e ela mesma: a coluna mostraria o proprio nome em
+// toda linha.
 const COLUNAS = [
   { campo: "placa", rotulo: "Placa" },
   { campo: "modelo", rotulo: "Veículo" },
-  { campo: "cliente", rotulo: "Cliente" },
+  { campo: "cliente", rotulo: "Cliente", papel: "PROFISSIONAL" },
   { campo: "ultima_sessao", rotulo: "Última sessão" },
 ];
 
 /** A lista de carros cadastrados. Filtro e ordem vem da URL. */
 export function Veiculos() {
+  const { usuario } = useAutenticacao();
+  const mostraCliente = usuario?.papel === "PROFISSIONAL";
+  // Coluna e opcao de ordenacao andam juntas: deixar a ordenacao por
+  // cliente no dropdown de quem nao ve a coluna daria uma lista reordenada
+  // por um criterio invisivel.
+  const colunas = COLUNAS.filter(({ papel }) => !papel || papel === usuario?.papel);
+  const ordenacoes = ORDENACOES.filter(
+    ({ campo }) => campo !== "cliente" || mostraCliente
+  );
+
   const navegar = useNavigate();
   const { filtro, aplicar, alternar, remover, limpar } = useFiltrosUrl(PADROES);
   const [veiculos, setVeiculos] = useState(null);
@@ -147,7 +161,11 @@ export function Veiculos() {
             className={c.entrada}
             value={buscaLocal}
             onChange={(e) => setBuscaLocal(e.target.value)}
-            placeholder="Buscar por placa, modelo ou cliente"
+            placeholder={
+              mostraCliente
+                ? "Buscar por placa, modelo ou cliente"
+                : "Buscar por placa ou modelo"
+            }
             aria-label="Buscar veículo"
           />
         </div>
@@ -161,7 +179,7 @@ export function Veiculos() {
         />
 
         <DropdownOrdenacao
-          opcoes={ORDENACOES}
+          opcoes={ordenacoes}
           campo={filtro.ordenar_por}
           direcao={filtro.direcao}
           onChange={(campo, direcao) => aplicar({ ordenar_por: campo, direcao })}
@@ -200,7 +218,7 @@ export function Veiculos() {
         <table className={`${c.tabela} ${s.tabela}`}>
           <thead>
             <tr>
-              {COLUNAS.map((coluna) => {
+              {colunas.map((coluna) => {
                 const ativa = filtro.ordenar_por === coluna.campo;
                 return (
                   <th key={coluna.campo} aria-sort={ativa ? (filtro.direcao === "asc" ? "ascending" : "descending") : "none"}>
@@ -236,7 +254,9 @@ export function Veiculos() {
                     {[v.ano, v.motor, v.ecu].filter(Boolean).join(" · ")}
                   </span>
                 </td>
-                <td className={c.celulaApagada}>{v.cliente || "—"}</td>
+                {mostraCliente && (
+                  <td className={c.celulaApagada}>{v.cliente || "—"}</td>
+                )}
                 <td className={v.ultima_sessao ? c.celulaApagada : c.celulaNula}>
                   {haQuantoTempo(v.ultima_sessao) || "nenhuma ainda"}
                 </td>

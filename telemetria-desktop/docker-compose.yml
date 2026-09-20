@@ -1,0 +1,26 @@
+# Sobe so o Postgres.
+#
+# Depois de subir, aplique as migrations na mao:
+#
+#     cd backend && alembic upgrade head
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: telemetria
+      POSTGRES_PASSWORD: telemetria
+      POSTGRES_DB: telemetria
+    ports:
+      - "5432:5432"
+    volumes:
+      - dados_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telemetria -d telemetria"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  dados_postgres:

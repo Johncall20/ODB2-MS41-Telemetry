@@ -2,12 +2,17 @@
 """
 Enche um banco de MENTIRA para ver as telas com meses de uso.
 
-    python semear.py            # cria ~/.telemetria-ds2/seed.db
-    python semear.py --recriar   # apaga o seed.db e refaz
+    python semear.py             # semeia a base `telemetria_seed`
+    python semear.py --recriar   # apaga o que houver la e refaz
 
-Escreve num banco SEPARADO e recusa mexer no `dados.db`, mesmo que a
-TELEMETRIA_DB aponte para ele - perder gravacao de verdade por causa de um
-script de desenvolvimento nao e um risco que vale correr.
+Escreve numa base SEPARADA: por padrao troca o nome da base da
+`DATABASE_URL` por `telemetria_seed`. Recusa escrever na base de uso real
+mesmo que a `DATABASE_URL` aponte direto para ela - perder gravacao de
+verdade por causa de um script de desenvolvimento nao e um risco que vale
+correr.
+
+A base de seed precisa existir e estar migrada antes. Ver "Banco de
+demonstracao" no README.
 
 Tudo passa pelos repositorios, pelos modelos e pelo DetectorEventos de
 verdade: nao ha INSERT solto aqui. Se o modelo mudar, este script quebra e
@@ -22,43 +27,70 @@ import os
 import random
 import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-PADRAO_SEED = Path.home() / ".telemetria-ds2" / "seed.db"
+BASE_SEED = "telemetria_seed"
 
-# Definido antes de importar telemetria.banco: e na importacao que ele le a
-# TELEMETRIA_DB e monta a engine.
-if not os.environ.get("TELEMETRIA_DB"):
-    os.environ["TELEMETRIA_DB"] = str(PADRAO_SEED)
+# O padrao do proprio seed, e nao o do app. NAO importe `telemetria.banco`
+# para reaproveitar o URL_PADRAO dele: aquele modulo cria a engine no
+# import, e a engine congela a DATABASE_URL que existir NAQUELE instante.
+# Importa-lo antes da troca abaixo faria a seed escrever na base de
+# producao com a guarda dizendo que estava tudo bem - foi exatamente o que
+# aconteceu quando este arquivo importava de la.
+URL_SEED_PADRAO = f"postgresql+psycopg://telemetria:telemetria@localhost:5432/{BASE_SEED}"
 
-ALVO = Path(os.environ["TELEMETRIA_DB"])
+
+def _url_do_seed() -> str:
+    """A DATABASE_URL apontando para a base de seed.
+
+    Com DATABASE_URL definida, troca so o nome da base e preserva usuario,
+    senha, host e porta: o seed mora no MESMO servidor Postgres que o app,
+    em outra base. Sem ela, cai no padrao de desenvolvimento.
+    """
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        return URL_SEED_PADRAO
+    base, _, _ = url.rpartition("/")
+    return f"{base}/{BASE_SEED}"
 
 
-def _conferir_alvo(recriar: bool) -> None:
-    """Recusa escrever onde nao deve. Roda ANTES de abrir o banco."""
-    if ALVO.name == "dados.db":
+def _resolver_alvo() -> str:
+    """Decide em que base escrever, e recusa a de uso real.
+
+    `SEMEAR_URL` manda, para quem quiser apontar o seed a outro servidor.
+    Sem ela, a base e a de seed derivada da DATABASE_URL. Nos dois casos, a
+    ultima palavra e a guarda: base chamada `telemetria` e a de uso real e
+    nao recebe dado de mentira, nem com --recriar.
+    """
+    url = os.environ.get("SEMEAR_URL") or _url_do_seed()
+    nome = url.rpartition("/")[2].split("?")[0]
+    if nome != BASE_SEED:
         sys.exit(
-            f"[semear] recusando escrever em {ALVO}\n"
-            "         'dados.db' e o banco de uso real. Aponte a TELEMETRIA_DB\n"
-            "         para outro arquivo, ou nao defina a variavel para usar\n"
-            f"         o padrao ({PADRAO_SEED})."
+            f"[semear] recusando escrever na base '{nome}'.\n"
+            f"         A seed so escreve em '{BASE_SEED}'. Se quiser outro\n"
+            "         destino, aponte a SEMEAR_URL para uma base com esse nome."
         )
-    if ALVO.exists():
-        if not recriar:
-            sys.exit(
-                f"[semear] {ALVO} ja existe.\n"
-                "         Rode com --recriar para apagar e refazer, ou apague\n"
-                f"         a mao:  rm \"{ALVO}\""
-            )
-        ALVO.unlink()
-        print(f"[semear] {ALVO.name} apagado (--recriar)")
+    return url
 
 
-_conferir_alvo("--recriar" in sys.argv)
+# Definido ANTES de importar telemetria.banco: e na importacao que ele le a
+# DATABASE_URL e monta a engine.
+os.environ["DATABASE_URL"] = _resolver_alvo()
+ALVO = os.environ["DATABASE_URL"]
 
-from telemetria.banco import criar_tabelas, sessao_db  # noqa: E402
+from telemetria.banco import engine, sessao_db  # noqa: E402
+
+# Cinto e suspensorio: se algum import acima acabar puxando telemetria.banco
+# antes desta linha, a engine apontaria para outra base e a guarda de cima
+# teria aprovado o destino errado. Melhor morrer aqui do que semear na base
+# de producao.
+assert str(engine.url).endswith(BASE_SEED), (
+    f"engine aponta para {engine.url}, nao para {BASE_SEED} - "
+    "telemetria.banco foi importado antes da troca da DATABASE_URL"
+)
 from telemetria.modelos import (  # noqa: E402
     VALID_COMPLETO,
+    PapelUsuario,
+    Usuario,
     Amostra,
     Evento,
     LimitesVeiculo,
@@ -67,10 +99,13 @@ from telemetria.modelos import (  # noqa: E402
     Veiculo,
 )
 from telemetria.repositorios import amostras as repo_amostras  # noqa: E402
+from telemetria.repositorios import clientes as repo_clientes  # noqa: E402
+from telemetria.repositorios import usuarios as repo_usuarios  # noqa: E402
 from telemetria.repositorios import limites as repo_limites  # noqa: E402
 from telemetria.repositorios import sessoes as repo_sessoes  # noqa: E402
 from telemetria.repositorios import veiculos as repo_veiculos  # noqa: E402
 from telemetria.servicos.detector import DetectorEventos  # noqa: E402
+from telemetria.servicos import autenticacao  # noqa: E402
 
 # ------------------------------------------------------------ os veiculos
 
@@ -81,7 +116,8 @@ from telemetria.servicos.detector import DetectorEventos  # noqa: E402
 PERFIS = [
     {
         "veiculo": dict(marca="BMW", modelo="325i", ano=1995, placa="ABC1234",
-                        motor="M50B25", cliente="Leonardo Caloni", quilometragem=248_500),
+                        motor="M50B25", quilometragem=248_500),
+        "cliente": "Leonardo Caloni",
         "sessoes": 22,
         "temperamento": "pista",
         "limites": dict(shift_light_rpm=5800, rpm_alto=6500, temp_alta_c=103,
@@ -97,14 +133,16 @@ PERFIS = [
     },
     {
         "veiculo": dict(marca="BMW", modelo="320i", ano=1997, placa="DEF5678",
-                        motor="M52B20", cliente="Oficina Zampieri", quilometragem=312_000),
+                        motor="M52B20", quilometragem=312_000),
+        "cliente": "Oficina Zampieri",
         "sessoes": 14,
         "temperamento": "passeio",
         "limites": None,          # fica com os sugeridos
     },
     {
         "veiculo": dict(marca="Volkswagen", modelo="Gol GTI", ano=1994, placa="GHI9012",
-                        motor="AP2000 16v", cliente="Marcos Pereira", quilometragem=189_300),
+                        motor="AP2000 16v", quilometragem=189_300),
+        "cliente": "Marcos Pereira",
         "sessoes": 11,
         "temperamento": "bateria-fraca",
         "limites": dict(shift_light_rpm=6000, rpm_alto=6600, temp_alta_c=100,
@@ -112,7 +150,8 @@ PERFIS = [
     },
     {
         "veiculo": dict(marca="Fiat", modelo="Uno Turbo", ano=1996, placa="JKL3456",
-                        motor="1.4 Turbo", cliente="Preparadora Baixada", quilometragem=97_800),
+                        motor="1.4 Turbo", quilometragem=97_800),
+        "cliente": "Preparadora Baixada",
         "sessoes": 9,
         "temperamento": "superaquece",
         "limites": dict(shift_light_rpm=6400, rpm_alto=7000, temp_alta_c=98,
@@ -122,7 +161,8 @@ PERFIS = [
     # mostra "sem placa".
     {
         "veiculo": dict(marca="Chevrolet", modelo="Opala Diplomata", ano=1988, placa="",
-                        motor="250-S", cliente="Antonio Nogueira", quilometragem=421_000),
+                        motor="250-S", quilometragem=421_000),
+        "cliente": "Antonio Nogueira",
         "sessoes": 2,
         "temperamento": "passeio",
         "limites": dict(shift_light_rpm=4800, rpm_alto=5200, temp_alta_c=100,
@@ -131,11 +171,35 @@ PERFIS = [
     # Arquivado: tem de sair das listas mas manter o historico acessivel.
     {
         "veiculo": dict(marca="Ford", modelo="Escort XR3", ano=1992, placa="MNO7890",
-                        motor="1.8i", cliente="Cliente antigo", quilometragem=203_400),
+                        motor="1.8i", quilometragem=203_400),
+        "cliente": "Cliente antigo",
         "sessoes": 4,
         "temperamento": "passeio",
         "limites": None,
         "arquivar": True,
+    },
+]
+
+# As duas contas da seed. A senha e a mesma e esta aqui em texto de
+# proposito: e banco de mentira, e o ponto e poder entrar sem procurar.
+SENHA_DA_SEED = "telemetria123"
+
+CONTAS = [
+    {
+        "nome": "Oficina Zampieri",
+        "email": "profissional@exemplo.com",
+        "papel": PapelUsuario.PROFISSIONAL,
+        # Fica com os quatro primeiros carros, cada um de um cliente
+        # diferente - e o que da a tela de Clientes algo para mostrar.
+        "perfis": (0, 4),
+    },
+    {
+        "nome": "Leonardo Caloni",
+        "email": "particular@exemplo.com",
+        "papel": PapelUsuario.PARTICULAR,
+        # Os dois ultimos, no cliente implicito: a conta PARTICULAR nao ve
+        # a palavra "cliente" em lugar nenhum.
+        "perfis": (4, 6),
     },
 ]
 
@@ -305,6 +369,64 @@ def _apagar_bits(linhas: list[dict], fracao: float) -> int:
     return sum(1 for linha in linhas if linha["valid"] != VALID_COMPLETO)
 
 
+# ----------------------------------------------------------- as guardas
+
+
+def _conferir_esquema() -> None:
+    """A base de seed precisa existir e estar migrada.
+
+    Antes o script criava as tabelas sozinho; agora quem cria esquema e o
+    Alembic, e a base de seed e migrada como qualquer outra. Erro claro
+    aqui vale mais que um `UndefinedTable` no meio da geracao.
+    """
+    from sqlalchemy import inspect
+
+    try:
+        tabelas = set(inspect(engine).get_table_names())
+    except Exception as erro:
+        sys.exit(
+            f"[semear] nao consegui falar com {ALVO}\n"
+            f"         {erro}\n"
+            "         O Postgres esta no ar? (docker compose up -d postgres)"
+        )
+    faltando = {"veiculo", "sessao", "amostra", "evento", "limitesveiculo"} - tabelas
+    if faltando:
+        sys.exit(
+            f"[semear] a base de seed nao esta migrada (faltam: {', '.join(sorted(faltando))}).\n"
+            "         Crie e migre antes:\n"
+            f'           createdb -h localhost -U telemetria {BASE_SEED}\n'
+            f'           DATABASE_URL="{ALVO}" alembic upgrade head'
+        )
+
+
+def _conferir_vazio(recriar: bool) -> None:
+    """Recusa semear por cima de dado que ja esta la.
+
+    Com `--recriar`, esvazia as tabelas em vez de apagar arquivo - nao ha
+    mais arquivo para apagar. TRUNCATE ... CASCADE numa tacada so, porque
+    as FKs entre veiculo, sessao, amostra e evento tornam a ordem do
+    DELETE um problema que nao vale ter.
+    """
+    from sqlalchemy import text
+
+    with engine.begin() as con:
+        quantos = con.execute(text("SELECT count(*) FROM veiculo")).scalar_one()
+        if quantos and not recriar:
+            sys.exit(
+                f"[semear] a base {BASE_SEED} ja tem {quantos} veiculo(s).\n"
+                "         Rode com --recriar para esvaziar e refazer."
+            )
+        if recriar:
+            con.execute(
+                text(
+                    "TRUNCATE veiculo, sessao, amostra, evento, limitesveiculo, "
+                    "cliente, usuario, tokenacesso RESTART IDENTITY CASCADE"
+                )
+            )
+            if quantos:
+                print(f"[semear] base esvaziada ({quantos} veiculo(s) removidos)")
+
+
 # ---------------------------------------------------------- gravar a sessao
 
 
@@ -324,8 +446,11 @@ def _recuar_datas(sessao_id: int, inicio: datetime, fim: datetime) -> None:
     """
     with sessao_db() as db:
         sessao = db.get(Sessao, sessao_id)
-        sessao.iniciada_em = inicio.astimezone(timezone.utc).replace(tzinfo=None)
-        sessao.encerrada_em = fim.astimezone(timezone.utc).replace(tzinfo=None)
+        # Com fuso: as colunas sao TIMESTAMP WITH TIME ZONE. Antes o fuso
+        # era removido porque o SQLite nao tinha o tipo e guardava UTC
+        # ingenuo - agora tirar o fuso e que estragaria a data.
+        sessao.iniciada_em = inicio.astimezone(timezone.utc)
+        sessao.encerrada_em = fim.astimezone(timezone.utc)
         db.add(sessao)
 
         from sqlmodel import select
@@ -405,15 +530,46 @@ def main() -> None:
     args = p.parse_args()
 
     random.seed(args.semente)
-    criar_tabelas()
+    _conferir_esquema()
+    _conferir_vazio(args.recriar)
     print(f"[semear] banco: {ALVO}")
 
     agora = datetime.now(timezone.utc)
     total_sessoes = 0
     total_amostras = 0
 
+    # As contas primeiro: sem dono nao ha cliente, e sem cliente nao ha
+    # carro - a cadeia veiculo -> cliente -> usuario vale tambem aqui.
+    donos = {}
+    for conta in CONTAS:
+        usuario = repo_usuarios.criar(
+            Usuario(
+                nome=conta["nome"],
+                email=conta["email"],
+                senha_hash=autenticacao.cifrar_senha(SENHA_DA_SEED),
+                papel=conta["papel"],
+            )
+        )
+        donos[conta["email"]] = usuario
+        print(f"[semear] conta {usuario.email} ({usuario.papel.value})")
+        for indice in range(*conta["perfis"]):
+            PERFIS[indice]["usuario"] = usuario
+
     for perfil in PERFIS:
-        veiculo = repo_veiculos.criar(Veiculo(**perfil["veiculo"]))
+        usuario = perfil["usuario"]
+        if usuario.papel == PapelUsuario.PARTICULAR:
+            # A conta PARTICULAR nao tem clientes: tudo vai para o
+            # implicito, que e ela mesma.
+            cliente = repo_clientes.implicito_de(usuario.id, usuario.nome)
+        else:
+            cliente = repo_clientes.criar(usuario.id, perfil["cliente"])
+        veiculo = repo_veiculos.criar(
+            # Os dois campos de dono, concordando - o mesmo invariante
+            # que `rotas/veiculos.py` garante no app.
+            Veiculo(
+                usuario_id=usuario.id, cliente_id=cliente.id, **perfil["veiculo"]
+            )
+        )
         if perfil["limites"] is not None:
             repo_limites.gravar_do_veiculo(veiculo.id, perfil["limites"])
         perfil["limites_efetivos"] = repo_limites.do_veiculo(veiculo.id)
@@ -440,7 +596,7 @@ def main() -> None:
             total_sessoes += 1
 
         if perfil.get("arquivar"):
-            repo_veiculos.arquivar(veiculo.id)
+            repo_veiculos.arquivar(veiculo.id, usuario.id)
             etiqueta += " (arquivado)"
         print(f"[semear]   {etiqueta}: {perfil['sessoes']} sessao(oes)")
 
@@ -452,7 +608,11 @@ def main() -> None:
         tipos = Counter(e.tipo.value for e in db.exec(select(Evento)))
 
     print()
-    print(f"[semear] {len(PERFIS)} veiculos, {total_sessoes} sessoes, {total_amostras} amostras")
+    print(
+        f"[semear] {len(CONTAS)} contas, {len(PERFIS)} veiculos, "
+        f"{total_sessoes} sessoes, {total_amostras} amostras"
+    )
+    print(f"[semear] senha das duas contas: {SENHA_DA_SEED}")
     print("[semear] eventos por tipo:")
     for tipo, quantos in sorted(tipos.items(), key=lambda par: -par[1]):
         print(f"[semear]   {tipo}: {quantos}")
@@ -462,10 +622,10 @@ def main() -> None:
     print()
     print("[semear] para subir o app com este banco:")
     if os.name == "nt":
-        print(f'[semear]   set TELEMETRIA_DB={ALVO}')
+        print(f"[semear]   set DATABASE_URL={ALVO}")
         print("[semear]   .venv\\Scripts\\python.exe executar.py --sim")
     else:
-        print(f'[semear]   TELEMETRIA_DB="{ALVO}" python executar.py --sim')
+        print(f'[semear]   DATABASE_URL="{ALVO}" python executar.py --sim')
 
 
 if __name__ == "__main__":

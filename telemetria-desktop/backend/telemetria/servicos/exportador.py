@@ -2,6 +2,12 @@
 Resumo da sessao e as saidas: CSV, JSON e o PDF com graficos do matplotlib.
 Mexe aqui quem mudar o que a exportacao contem ou como o relatorio parece.
 
+**Este modulo nao filtra por dono**, e por isso passa `None` como
+`usuario_id` aos repositorios. Quem chama ja autorizou: as rotas de
+sessao conferem a posse com `_exigir_sessao()` antes de pedir qualquer
+coisa daqui. Chamar estas funcoes sem essa checagem entrega dado de outra
+conta.
+
 Campo com o bit de `valid` apagado sai VAZIO, nunca com o ultimo valor.
 """
 
@@ -12,7 +18,6 @@ import io
 import json
 import re
 import unicodedata
-from datetime import timezone
 from typing import Sequence
 
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -83,15 +88,11 @@ def _identificador(sessao_id: int, veiculo) -> str:
 def _momento_local(sessao) -> str:
     """O inicio da sessao em hora LOCAL, como "2026-09-17_14h32".
 
-    O banco guarda UTC sem fuso (o SQLite nao tem tipo com fuso), entao
-    marcar o lado UTC antes de converter e o que evita somar o
-    deslocamento na direcao errada. Hora local porque o nome do arquivo e
-    lido por gente: "14h32" tem de casar com o que o relogio dizia.
+    A coluna e TIMESTAMP WITH TIME ZONE, entao o que chega ja vem com
+    fuso e so precisa ser convertido. Hora local porque o nome do arquivo
+    e lido por gente: "14h32" tem de casar com o que o relogio dizia.
     """
-    quando = sessao.iniciada_em
-    if quando.tzinfo is None:
-        quando = quando.replace(tzinfo=timezone.utc)
-    return quando.astimezone().strftime("%Y-%m-%d_%Hh%M")
+    return sessao.iniciada_em.astimezone().strftime("%Y-%m-%d_%Hh%M")
 
 
 def nome_arquivo(sessao_id: int, extensao: str) -> str:
@@ -102,9 +103,9 @@ def nome_arquivo(sessao_id: int, extensao: str) -> str:
     navegador obedecer ao Content-Disposition - se alguem puser o atributo
     la, passam a existir dois nomes e eles vao divergir.
     """
-    sessao = repo_sessoes.buscar(sessao_id)
+    sessao = repo_sessoes.buscar(sessao_id, None)
     veiculo = (
-        repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True)
+        repo_veiculos.buscar(sessao.veiculo_id, None, incluir_arquivados=True)
         if sessao is not None
         else None
     )
@@ -205,7 +206,7 @@ def resumo(sessao_id: int) -> dict:
     Sessao encerrada e consolidada responde com os campos gravados no
     encerramento; ATIVA e apurada na hora, sobre as amostras.
     """
-    sessao = repo_sessoes.buscar(sessao_id)
+    sessao = repo_sessoes.buscar(sessao_id, None)
     if sessao is None:
         return {}
     eventos = repo_sessoes.contar_eventos(sessao_id)
@@ -234,12 +235,12 @@ def para_json(sessao_id: int) -> str:
     E o formato de quem vai reprocessar a gravacao fora do app, entao vai
     tudo - inclusive o `valid` cru de cada amostra.
     """
-    sessao = repo_sessoes.buscar(sessao_id)
+    sessao = repo_sessoes.buscar(sessao_id, None)
     amostras = repo_amostras.listar(sessao_id)
     eventos = repo_sessoes.listar_eventos(sessao_id)
     # Pelo id, e nao por sessao.veiculo: o objeto vem desanexado do
     # repositorio e relacao preguicosa nao carrega mais.
-    veiculo = repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True) if sessao else None
+    veiculo = repo_veiculos.buscar(sessao.veiculo_id, None, incluir_arquivados=True) if sessao else None
     dados = resumo(sessao_id)
     pacote = {
         "veiculo": veiculo.model_dump() if veiculo else None,
@@ -390,14 +391,17 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
     """
     escolhidas = [s for s in secoes if s in SECOES_VALIDAS] or list(SECOES_PADRAO)
 
-    sessao = repo_sessoes.buscar(sessao_id)
+    sessao = repo_sessoes.buscar(sessao_id, None)
     if sessao is None:
         raise ValueError(f"sessao {sessao_id} nao encontrada")
-    veiculo = repo_veiculos.buscar(sessao.veiculo_id, incluir_arquivados=True)
+    veiculo = repo_veiculos.buscar(sessao.veiculo_id, None, incluir_arquivados=True)
     amostras = repo_amostras.listar(sessao_id)
     eventos = sorted(repo_sessoes.listar_eventos(sessao_id), key=lambda e: e.id)
     dados = resumo(sessao_id)
-    inicio = sessao.iniciada_em
+    # Hora LOCAL, igual ao nome do arquivo: o relatorio e lido por gente, e
+    # duas horas diferentes para a mesma sessao - uma na capa, outra no
+    # nome - seria o tipo de divergencia que ninguem nota a tempo.
+    inicio = sessao.iniciada_em.astimezone()
     identificacao = " · ".join(
         p
         for p in (

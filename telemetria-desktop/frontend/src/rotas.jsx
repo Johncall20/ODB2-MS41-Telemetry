@@ -6,6 +6,11 @@
 */
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./layout/Shell.jsx";
+import { ExigeSessao, SoDeslogado } from "./layout/Guarda.jsx";
+import { Login } from "./paginas/Login.jsx";
+import { CriarConta } from "./paginas/CriarConta.jsx";
+import { Clientes } from "./paginas/Clientes.jsx";
+import { Conta } from "./paginas/Conta.jsx";
 import { Veiculos } from "./paginas/Veiculos.jsx";
 import { Veiculo } from "./paginas/Veiculo.jsx";
 import { VeiculoFormulario } from "./paginas/VeiculoFormulario.jsx";
@@ -28,6 +33,16 @@ import { LimitesVeiculo } from "./paginas/LimitesVeiculo.jsx";
 export function Rotas() {
   return (
     <Routes>
+      {/* Fora do Shell: sem sidebar, e so para quem nao tem sessao. */}
+      <Route element={<SoDeslogado />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/criar-conta" element={<CriarConta />} />
+      </Route>
+
+      {/* Tudo daqui para baixo exige sessao. A guarda vem POR FORA do
+          Shell: sem ela, o TelemetriaProvider do Shell abriria o
+          websocket e chamaria /api/status antes de haver login. */}
+      <Route element={<ExigeSessao />}>
       <Route element={<Shell />}>
         <Route index element={<Navigate to="/veiculos" replace />} />
         <Route path="/veiculos" element={<Veiculos />} />
@@ -41,7 +56,13 @@ export function Rotas() {
         <Route path="/sessoes/:id/analise" element={<Analise />} />
         <Route path="/sessoes/:id/exportar" element={<Exportar />} />
         <Route path="/relatorios" element={<Relatorios />} />
+        {/* Clientes existe para as duas contas: quem some do caminho da
+            PARTICULAR e o item da sidebar, nao a rota. Esconder a rota
+            tambem daria 404 em link salvo de quando a conta era outra. */}
+        <Route path="/clientes" element={<Clientes />} />
+        <Route path="/conta" element={<Conta />} />
         <Route path="*" element={<Navigate to="/veiculos" replace />} />
+      </Route>
       </Route>
     </Routes>
   );

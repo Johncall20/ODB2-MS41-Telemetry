@@ -1,0 +1,83 @@
+/* Coluna esquerda das telas de entrada (nodes 2:5 e 3:532): 860px fixos,
+   com a linha divisoria a direita. */
+
+.painel {
+  flex: none;
+  width: 860px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 80px;
+  border-right: 1px solid var(--linha);
+}
+
+/* A marca fica ancorada no topo, nao no fluxo: o bloco de texto e
+   centrado verticalmente e sem o absolute ele empurraria o centro. */
+.marca {
+  position: absolute;
+  top: 80px;
+  left: 80px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* O simbolo esta espelhado no eixo vertical no Figma, como na sidebar. */
+.logo {
+  display: block;
+  width: 60px;
+  height: 34px;
+  transform: scaleY(-1);
+}
+
+.nome {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.24px;
+  color: var(--ambar);
+}
+
+.conteudo {
+  max-width: 540px;
+}
+
+.titulo {
+  margin: 0;
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 61.6px;
+  letter-spacing: -1.12px;
+  color: var(--texto);
+}
+
+.texto {
+  margin: 24px 0 0;
+  font-size: 19px;
+  line-height: 30.4px;
+  color: var(--apagado);
+}
+
+.blocos {
+  display: flex;
+  gap: 7px;
+  margin-top: 56px;
+}
+
+.bloco {
+  width: 38.6px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.ok { background: var(--ok); }
+.atencao { background: var(--ambar); }
+.risco { background: var(--risco); }
+
+/* Abaixo de 1100px o painel da marca sai: numa janela estreita ele
+   roubaria a largura do formulario, que e o que a tela existe para
+   mostrar. */
+@media (max-width: 1100px) {
+  .painel {
+    display: none;
+  }
+}

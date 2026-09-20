@@ -17,6 +17,28 @@ from ..modelos import Evento, Sessao, StatusSessao, Veiculo, agora
 from .sessoes import EVENTOS_DE_ROTINA, PERIODOS
 
 
+def _do_usuario(consulta, usuario_id: Optional[int]):
+    """Recorta para os carros de uma conta.
+
+    Toda consulta deste modulo ja passa por `Sessao`; daqui sai o unico
+    salto que falta, ate o veiculo, que guarda o dono. As funcoes que ja
+    juntam `Veiculo` por conta propria usam `_do_usuario_com_veiculo()`
+    para nao juntar a tabela duas vezes.
+    """
+    if usuario_id is None:
+        return consulta
+    return consulta.join(Veiculo, Veiculo.id == Sessao.veiculo_id).where(
+        Veiculo.usuario_id == usuario_id
+    )
+
+
+def _do_usuario_com_veiculo(consulta, usuario_id: Optional[int]):
+    """Igual ao de cima, para quem ja tem `Veiculo` na consulta."""
+    if usuario_id is None:
+        return consulta
+    return consulta.where(Veiculo.usuario_id == usuario_id)
+
+
 def _corte(periodo: str):
     """Data inicial do periodo, ou None para "tudo"."""
     dias = PERIODOS.get(periodo)
@@ -41,12 +63,16 @@ def _integridade():
 
 
 def _duracao():
-    return (
-        func.julianday(Sessao.encerrada_em) - func.julianday(Sessao.iniciada_em)
-    ) * 86400.0
+    """A duracao em SEGUNDOS, direto do Postgres.
+
+    `EXTRACT(EPOCH FROM (a - b))` ja da segundos; o julianday do SQLite
+    dava dias e exigia o `* 86400` que havia aqui. Sem coalesce: todas as
+    consultas deste modulo filtram ENCERRADA.
+    """
+    return func.extract("epoch", Sessao.encerrada_em - Sessao.iniciada_em)
 
 
-def evolucao(veiculo_id: int, periodo: str = "tudo") -> list[dict]:
+def evolucao(veiculo_id: int, usuario_id: Optional[int], periodo: str = "tudo") -> list[dict]:
     """Uma linha por sessao encerrada do veiculo, em ordem cronologica.
 
     Crescente porque e serie temporal - as outras listas do app sao de
@@ -59,7 +85,7 @@ def evolucao(veiculo_id: int, periodo: str = "tudo") -> list[dict]:
         .scalar_subquery()
     )
 
-    consulta = (
+    consulta = _do_usuario(
         select(
             Sessao.id,
             Sessao.iniciada_em,
@@ -75,7 +101,8 @@ def evolucao(veiculo_id: int, periodo: str = "tudo") -> list[dict]:
             eventos.label("eventos"),
         )
         .where(Sessao.veiculo_id == veiculo_id, Sessao.status == StatusSessao.ENCERRADA)
-        .order_by(Sessao.iniciada_em)
+        .order_by(Sessao.iniciada_em),
+        usuario_id,
     )
 
     corte = _corte(periodo)
@@ -106,7 +133,9 @@ def evolucao(veiculo_id: int, periodo: str = "tudo") -> list[dict]:
         ]
 
 
-def eventos_por_tipo(veiculo_id: Optional[int] = None, periodo: str = "tudo") -> list[dict]:
+def eventos_por_tipo(
+    usuario_id: Optional[int], veiculo_id: Optional[int] = None, periodo: str = "tudo"
+) -> list[dict]:
     """Quantos eventos de cada tipo, e em quantas sessoes distintas.
 
     As duas contagens dizem coisas diferentes: vinte shift lights numa
@@ -123,7 +152,7 @@ def eventos_por_tipo(veiculo_id: Optional[int] = None, periodo: str = "tudo") ->
         .group_by(Evento.tipo)
         .order_by(func.count(Evento.id).desc())
     )
-    consulta = _recortar(consulta, veiculo_id, periodo)
+    consulta = _recortar(consulta, usuario_id, veiculo_id, periodo)
 
     with sessao_db() as db:
         return [
@@ -132,7 +161,7 @@ def eventos_por_tipo(veiculo_id: Optional[int] = None, periodo: str = "tudo") ->
         ]
 
 
-def eventos_por_veiculo(periodo: str = "tudo") -> list[dict]:
+def eventos_por_veiculo(usuario_id: Optional[int], periodo: str = "tudo") -> list[dict]:
     """Eventos por veiculo, do mais problematico ao menos.
 
     Arquivado entra: ele some das listas de escolha, nao do relatorio.
@@ -154,7 +183,12 @@ def eventos_por_veiculo(periodo: str = "tudo") -> list[dict]:
         .group_by(Veiculo.id)
         .order_by(total.desc())
     )
-    consulta = _recortar(consulta, None, periodo)
+    # Esta ja junta `Veiculo`, entao o recorte do dono vem por outro
+    # caminho - juntar a mesma tabela duas vezes viraria produto.
+    consulta = _do_usuario_com_veiculo(consulta, usuario_id)
+    corte = _corte(periodo)
+    if corte is not None:
+        consulta = consulta.where(Sessao.iniciada_em >= corte)
 
     with sessao_db() as db:
         return [
@@ -172,14 +206,20 @@ def eventos_por_veiculo(periodo: str = "tudo") -> list[dict]:
 
 
 def eventos_por_periodo(
-    veiculo_id: Optional[int] = None, periodo: str = "tudo"
+    usuario_id: Optional[int], veiculo_id: Optional[int] = None, periodo: str = "tudo"
 ) -> list[dict]:
     """Eventos anomalos agrupados por dia.
 
     Pela data da SESSAO, nao a do evento: mantem a serie alinhada com a
     evolucao acima.
     """
-    dia = func.strftime("%Y-%m-%d", Sessao.iniciada_em)
+    # AT TIME ZONE 'UTC' explicito: `to_char` sobre uma coluna com fuso
+    # usaria o fuso do SERVIDOR, e o mesmo banco daria um grafico diferente
+    # em cada maquina. O SQLite guardava UTC ingenuo e agrupava em UTC;
+    # fixar aqui preserva isso.
+    dia = func.to_char(
+        func.timezone("UTC", Sessao.iniciada_em), "YYYY-MM-DD"
+    )
     consulta = (
         select(dia.label("dia"), func.count(Evento.id).label("total"))
         .join(Sessao, Sessao.id == Evento.sessao_id)
@@ -187,14 +227,15 @@ def eventos_por_periodo(
         .group_by(dia)
         .order_by(dia)
     )
-    consulta = _recortar(consulta, veiculo_id, periodo)
+    consulta = _recortar(consulta, usuario_id, veiculo_id, periodo)
 
     with sessao_db() as db:
         return [{"dia": d, "total": total} for d, total in db.exec(consulta).all()]
 
 
-def _recortar(consulta, veiculo_id: Optional[int], periodo: str):
-    """Filtro de veiculo e de periodo, igual nas tres consultas de evento."""
+def _recortar(consulta, usuario_id: Optional[int], veiculo_id: Optional[int], periodo: str):
+    """Dono, veiculo e periodo - o recorte igual das tres consultas de evento."""
+    consulta = _do_usuario(consulta, usuario_id)
     if veiculo_id is not None:
         consulta = consulta.where(Sessao.veiculo_id == veiculo_id)
     corte = _corte(periodo)
@@ -203,13 +244,16 @@ def _recortar(consulta, veiculo_id: Optional[int], periodo: str):
     return consulta
 
 
-def resumo_da_frota(periodo: str = "tudo") -> dict:
+def resumo_da_frota(usuario_id: Optional[int], periodo: str = "tudo") -> dict:
     """Sessoes, tempo gravado e carros que rodaram no periodo."""
-    consulta = select(
-        func.count(Sessao.id),
-        func.count(func.distinct(Sessao.veiculo_id)),
-        func.sum(_duracao()),
-        func.sum(Sessao.total_amostras),
+    consulta = _do_usuario(
+        select(
+            func.count(Sessao.id),
+            func.count(func.distinct(Sessao.veiculo_id)),
+            func.sum(_duracao()),
+            func.sum(Sessao.total_amostras),
+        ),
+        usuario_id,
     ).where(Sessao.status == StatusSessao.ENCERRADA)
 
     corte = _corte(periodo)
