@@ -27,6 +27,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* O valor no padrao ("Situação · Ativos"): dito, mas sem acender. */
+.gatilho-valor {
+  color: var(--apagado);
+}
+
 .seta {
   flex: none;
   color: var(--apagado);

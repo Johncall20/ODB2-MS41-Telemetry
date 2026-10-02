@@ -58,15 +58,34 @@ def apagar(token_hash: str) -> bool:
         return True
 
 
-def apagar_do_usuario(usuario_id: int) -> int:
-    """Derruba TODOS os logins de uma conta. Devolve quantos cairam.
+def apagar_do_usuario(usuario_id: int, exceto_hash: Optional[str] = None) -> int:
+    """Derruba os logins de uma conta. Devolve quantos cairam.
 
-    Nao ha rota que use ainda; existe porque trocar senha ou suspeitar de
-    vazamento pede exatamente isto, e o lugar dessa consulta e aqui.
+    `exceto_hash` poupa um: e a troca de senha, que derruba todo outro
+    navegador e mantem logado quem acabou de trocar.
+    """
+    with sessao_db() as db:
+        comando = delete(TokenAcesso).where(TokenAcesso.usuario_id == usuario_id)
+        if exceto_hash is not None:
+            comando = comando.where(TokenAcesso.token_hash != exceto_hash)
+        resultado = db.exec(comando)
+        db.commit()
+        return resultado.rowcount or 0
+
+
+def limpar_expirados_do_usuario(usuario_id: int) -> int:
+    """Remove os tokens vencidos de uma conta. Roda a cada login dela.
+
+    Token vencido ja nao autentica (a validade esta na consulta); isto e
+    so para a tabela nao crescer para sempre. Por conta, e nao global,
+    para o login de uma pessoa nao pagar a limpeza de todas.
     """
     with sessao_db() as db:
         resultado = db.exec(
-            delete(TokenAcesso).where(TokenAcesso.usuario_id == usuario_id)
+            delete(TokenAcesso).where(
+                TokenAcesso.usuario_id == usuario_id,
+                TokenAcesso.expira_em <= agora(),
+            )
         )
         db.commit()
         return resultado.rowcount or 0

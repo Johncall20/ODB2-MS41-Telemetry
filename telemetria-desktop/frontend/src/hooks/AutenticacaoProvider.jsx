@@ -64,9 +64,17 @@ export function AutenticacaoProvider({ children }) {
     }
   }, []);
 
+  /** Exclui a conta. O backend ja apagou o cookie; zerar o usuario e o
+   *  que faz a guarda de rota mandar para /login. So zera se deu certo:
+   *  senha errada ou gravacao ativa deixam a pessoa onde estava. */
+  const excluirConta = useCallback(async (dados) => {
+    await api.excluirConta(dados);
+    setUsuario(null);
+  }, []);
+
   const valor = useMemo(
-    () => ({ usuario, carregando, entrar, cadastrar, sair, recarregar }),
-    [usuario, carregando, entrar, cadastrar, sair, recarregar]
+    () => ({ usuario, carregando, entrar, cadastrar, sair, recarregar, excluirConta }),
+    [usuario, carregando, entrar, cadastrar, sair, recarregar, excluirConta]
   );
 
   return (

@@ -65,13 +65,25 @@ export const api = {
   logout: () => pedir("/api/auth/logout", { metodo: "POST" }),
   eu: () => pedir("/api/auth/eu"),
 
-  // O papel e preferencia de interface: a rota e a mesma para os dois, e
-  // quem esconde a tela de Clientes do PARTICULAR e o React.
   trocarPapel: (papel) => pedir("/api/auth/eu", { metodo: "PUT", corpo: { papel } }),
-  listarClientes: () => pedir("/api/clientes"),
+  // A tela de Conta. Senha atual errada volta 403 (a pessoa esta logada),
+  // e-mail em uso 409 - as duas com `mensagem` para o Aviso.
+  editarPerfil: (dados) => pedir("/api/auth/eu/perfil", { metodo: "PUT", corpo: dados }),
+  trocarSenha: (dados) => pedir("/api/auth/eu/senha", { metodo: "PUT", corpo: dados }),
+  dadosDaConta: () => pedir("/api/auth/eu/dados"),
+  // POST e nao DELETE: leva corpo (senha e confirmacao).
+  excluirConta: (dados) => pedir("/api/auth/eu/excluir", { metodo: "POST", corpo: dados }),
+
+  // Ler cliente vale para as duas contas; escrever, so para a
+  // PROFISSIONAL - o backend responde 403 ao PARTICULAR.
+  listarClientes: (filtros = {}) => pedir(`/api/clientes${_query(filtros)}`),
+  lerCliente: (id) => pedir(`/api/clientes/${id}`),
   criarCliente: (dados) => pedir("/api/clientes", { metodo: "POST", corpo: dados }),
   editarCliente: (id, dados) =>
     pedir(`/api/clientes/${id}`, { metodo: "PUT", corpo: dados }),
+  // DELETE arquiva, como no veiculo. 409 se o cliente tem carro ativo.
+  arquivarCliente: (id) => pedir(`/api/clientes/${id}`, { metodo: "DELETE" }),
+  restaurarCliente: (id) => pedir(`/api/clientes/${id}/restaurar`, { metodo: "POST" }),
 
   listarVeiculos: (filtros = {}) => pedir(`/api/veiculos${_query(filtros)}`),
   lerVeiculo: (id) => pedir(`/api/veiculos/${id}`),

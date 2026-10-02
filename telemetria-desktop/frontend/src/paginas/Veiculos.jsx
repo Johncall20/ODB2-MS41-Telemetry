@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, Search, X } from "lucide-react";
 import { api } from "../api.js";
 import { useAutenticacao } from "../hooks/useAutenticacao.js";
-import { haQuantoTempo, placa } from "../formato.js";
+import { haQuantoTempo, nomeCliente, placa } from "../formato.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Chip } from "../componentes/ui/Chip.jsx";
 import { Seta } from "../componentes/ui/Seta.jsx";
@@ -172,10 +172,10 @@ export function Veiculos() {
 
         <FiltroPopover
           rotulo="Situação"
+          rotuloAcima={false}
           opcoes={SITUACOES}
           valor={filtro.situacao}
           onChange={(valor) => alternar("situacao", valor)}
-          resumo={filtro.situacao.length || ""}
         />
 
         <DropdownOrdenacao
@@ -208,12 +208,20 @@ export function Veiculos() {
 
       {veiculos === null ? (
         <p className={c.paginaVazia}>Carregando…</p>
+      ) : veiculos.length === 0 && ativos.length > 0 ? (
+        <p className={c.paginaVazia}>Nenhum veículo bate com esses filtros.</p>
       ) : veiculos.length === 0 ? (
-        <p className={c.paginaVazia}>
-          {ativos.length > 0
-            ? "Nenhum veículo bate com esses filtros."
-            : "Nenhum veículo cadastrado ainda."}
-        </p>
+        // Sem filtro e sem carro: conta nova (ou so com arquivados). O
+        // botao repete o do topo porque e o unico passo que faz sentido.
+        <div className={c.estadoVazio}>
+          <p>Nenhum veículo cadastrado ainda. Cadastre o primeiro para começar a gravar sessões.</p>
+          <button
+            className={`${c.botao} ${c.botaoPrimario}`}
+            onClick={() => navegar("/veiculos/novo")}
+          >
+            Cadastrar o primeiro veículo
+          </button>
+        </div>
       ) : (
         <table className={`${c.tabela} ${s.tabela}`}>
           <thead>
@@ -255,7 +263,9 @@ export function Veiculos() {
                   </span>
                 </td>
                 {mostraCliente && (
-                  <td className={c.celulaApagada}>{v.cliente || "—"}</td>
+                  <td className={c.celulaApagada}>
+                    {nomeCliente(v.cliente, v.cliente_implicito) || "—"}
+                  </td>
                 )}
                 <td className={v.ultima_sessao ? c.celulaApagada : c.celulaNula}>
                   {haQuantoTempo(v.ultima_sessao) || "nenhuma ainda"}

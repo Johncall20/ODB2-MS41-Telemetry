@@ -27,6 +27,18 @@ export function placa(valor) {
   return /^[A-Z]{3}[0-9]{4}$/.test(valor) ? `${valor.slice(0, 3)}-${valor.slice(3)}` : valor;
 }
 
+/*
+  O nome do dono do carro como a tela escreve. O cliente implicito e a
+  propria conta: o nome dele seria o de quem esta olhando, entao a tela
+  diz "Meus carros". O backend so marca o caso (`implicito`,
+  `cliente_implicito`); o texto e daqui.
+*/
+export const MEUS_CARROS = "Meus carros";
+
+export function nomeCliente(nome, implicito) {
+  return implicito ? MEUS_CARROS : nome || "";
+}
+
 /** Numero no padrao brasileiro ("2.940"). Travessao quando nao ha valor. */
 export function milhar(n) {
   if (n === null || n === undefined) return SEM_VALOR;

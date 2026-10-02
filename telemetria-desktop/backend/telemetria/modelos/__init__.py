@@ -16,7 +16,7 @@ from .enums import (
     campos_invalidos,
 )
 from .evento import Evento
-from .limites import CAMPOS_LIMITE, LIMITES_SUGERIDOS, Limites
+from .limites import CAMPOS_LIMITE, LIMITES_SUGERIDOS
 from .limites_veiculo import LimitesVeiculo
 from .sessao import Sessao
 from .token_acesso import TokenAcesso
@@ -31,7 +31,6 @@ __all__ = [
     "Evento",
     "EstadoLeitor",
     "LIMITES_SUGERIDOS",
-    "Limites",
     "LimitesVeiculo",
     "Sessao",
     "PapelUsuario",

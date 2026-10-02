@@ -6,11 +6,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
+import { useAutenticacao } from "../hooks/useAutenticacao.js";
 import {
   ROTULO_EVENTO,
   dataHora,
   duracao,
   milhar,
+  nomeCliente,
   placa,
   quilometragem,
 } from "../formato.js";
@@ -30,8 +32,13 @@ import s from "./Veiculo.module.css";
 export function Veiculo() {
   const { id } = useParams();
   const navegar = useNavigate();
+  const { usuario } = useAutenticacao();
   const [dados, setDados] = useState(null);
+  // Dois erros separados: o de carregar troca a pagina pelo aviso (nao ha
+  // o que mostrar), o de restaurar aparece em cima da ficha, que continua
+  // la - a pessoa precisa dela para decidir o que fazer com o 409.
   const [erro, setErro] = useState("");
+  const [erroAcao, setErroAcao] = useState("");
   const [ocupado, setOcupado] = useState(false);
 
   const carregar = useCallback(() => {
@@ -45,13 +52,15 @@ export function Veiculo() {
   useEffect(carregar, [carregar]);
 
   async function restaurar() {
-    setErro("");
+    setErroAcao("");
     setOcupado(true);
     try {
       await api.restaurarVeiculo(id);
       carregar();
     } catch (e) {
-      setErro(String(e.message || e));
+      // 409 de placa em uso ou de cliente arquivado: a frase do backend
+      // ja diz o que fazer.
+      setErroAcao(String(e.message || e));
     } finally {
       setOcupado(false);
     }
@@ -62,12 +71,15 @@ export function Veiculo() {
 
   const { veiculo, cliente, sessoes, total_sessoes } = dados;
   const arquivado = Boolean(veiculo.arquivado_em);
-  // O cliente implicito e a propria conta: poe-lo na legenda repetiria o
-  // nome de quem esta olhando em todo carro.
+  // Cliente so na legenda do PROFISSIONAL. O implicito sai como "Meus
+  // carros"; para o PARTICULAR todo carro e dele, e o nome repetiria o
+  // de quem esta olhando.
   const legenda = [
     veiculo.marca && `${veiculo.marca} ${veiculo.modelo}`,
     veiculo.ano,
-    cliente && !cliente.implicito ? cliente.nome : null,
+    cliente && usuario?.papel === "PROFISSIONAL"
+      ? nomeCliente(cliente.nome, cliente.implicito)
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -122,6 +134,8 @@ export function Veiculo() {
           )}
         </div>
       </header>
+
+      {erroAcao && <Aviso>{erroAcao}</Aviso>}
 
       <div className={c.cartoes}>
         <Cartao rotulo="Motor" valor={veiculo.motor} mono />

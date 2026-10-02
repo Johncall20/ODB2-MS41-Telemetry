@@ -33,8 +33,15 @@ class VeiculoEntrada(BaseModel):
 
     # O dono. Opcional na ENTRADA porque a conta PARTICULAR nao escolhe
     # cliente - a rota preenche com o implicito dela. Para o
-    # PROFISSIONAL a rota exige.
+    # PROFISSIONAL a rota exige um dos dois: `cliente_id` ou
+    # `meus_carros`, que e o carro da propria conta (o cliente implicito,
+    # que o front nao precisa conhecer pelo id - ele pode nem existir
+    # ainda). Os dois juntos sao contraditorios e dao 422, em vez de um
+    # vencer em silencio. A checagem mora em `_dono_do_carro()`, e nao num
+    # validator daqui: o 422 do Pydantic sai como lista de erros, e a tela
+    # mostraria "HTTP 422" no lugar da frase.
     cliente_id: Optional[int] = None
+    meus_carros: bool = False
 
     @field_validator("placa")
     @classmethod
@@ -48,6 +55,16 @@ class InicioSessao(BaseModel):
 
     veiculo_id: int
     observacao: str = ""
+
+
+def normalizar_email(valor: str) -> str:
+    """Minusculo e sem espaco nas pontas.
+
+    Sem isto, "Leo@x.com" e "leo@x.com" viram duas contas e a pessoa nao
+    entende por que o login falha. Uma funcao so para cadastro e edicao
+    de perfil: duas regras sairiam do ar uma da outra.
+    """
+    return valor.strip().lower()
 
 
 class CadastroEntrada(BaseModel):
@@ -67,12 +84,7 @@ class CadastroEntrada(BaseModel):
     @field_validator("email")
     @classmethod
     def _email_normalizado(cls, valor: str) -> str:
-        """Minusculo e sem espaco nas pontas.
-
-        Sem isto, "Leo@x.com" e "leo@x.com" viram duas contas e a pessoa
-        nao entende por que o login falha.
-        """
-        return valor.strip().lower()
+        return normalizar_email(valor)
 
     @field_validator("nome")
     @classmethod
@@ -109,6 +121,43 @@ def usuario_publico(usuario: Usuario) -> dict:
     }
 
 
+class PerfilEntrada(BaseModel):
+    """Nome e e-mail da conta. `senha_atual` so e exigida pela rota quando
+    o e-mail muda: trocar o e-mail e trocar o que entra no login."""
+
+    nome: str = Field(min_length=1)
+    email: EmailStr
+    senha_atual: str = ""
+
+    @field_validator("email")
+    @classmethod
+    def _email_normalizado(cls, valor: str) -> str:
+        return normalizar_email(valor)
+
+    @field_validator("nome")
+    @classmethod
+    def _nome_limpo(cls, valor: str) -> str:
+        return valor.strip()
+
+
+class SenhaEntrada(BaseModel):
+    """Troca de senha. Sem `min_length` na nova de proposito: o 422 do
+    Pydantic sai como lista e a tela mostraria "HTTP 422". A regra de
+    tamanho e conferida na rota, com a frase."""
+
+    senha_atual: str
+    senha_nova: str
+
+
+class ExclusaoEntrada(BaseModel):
+    """Exclusao da conta: a senha e o proprio e-mail, digitado de novo.
+    O backend confere o e-mail tambem - uma chamada de fora da tela nao
+    pula a confirmacao."""
+
+    senha: str
+    confirmacao: str
+
+
 class ClienteEntrada(BaseModel):
     """O formulario de cliente."""
 
@@ -134,6 +183,7 @@ def cliente_publico(cliente: Cliente) -> dict:
         "nome": cliente.nome,
         "contato": cliente.contato,
         "implicito": cliente.implicito,
+        "arquivado_em": cliente.arquivado_em,
     }
 
 

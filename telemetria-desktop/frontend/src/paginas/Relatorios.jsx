@@ -228,6 +228,7 @@ export function Relatorios() {
 
         <FiltroPopover
           rotulo="Período"
+          rotuloAcima={false}
           exclusivo
           opcoes={PERIODOS}
           valor={filtro.periodo}

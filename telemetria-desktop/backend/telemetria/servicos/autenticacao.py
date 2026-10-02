@@ -71,7 +71,11 @@ def abrir_login(usuario: Usuario) -> str:
 
     E a unica vez que o valor cru existe: o banco guarda so o hash. Quem
     chama entrega esse valor ao navegador (no cookie) e esquece.
+
+    Aproveita para varrer os tokens vencidos DESTA conta - cadastro e
+    login passam por aqui, entao os dois limpam pelo mesmo caminho.
     """
+    repo_tokens.limpar_expirados_do_usuario(usuario.id)
     token = secrets.token_urlsafe(32)
     repo_tokens.criar(usuario.id, _hash_do_token(token), agora() + VALIDADE)
     return token
@@ -82,6 +86,18 @@ def fechar_login(token: Optional[str]) -> bool:
     if not token:
         return False
     return repo_tokens.apagar(_hash_do_token(token))
+
+
+def fechar_outros_logins(usuario_id: int, token_atual: Optional[str]) -> int:
+    """Derruba todo login da conta menos o desta requisicao.
+
+    E o que a troca de senha pede: quem trocou continua logado, e qualquer
+    outro navegador - inclusive o de quem soubesse a senha antiga - cai no
+    proximo pedido. Sem token atual (nao deveria acontecer numa rota
+    logada), derruba todos.
+    """
+    exceto = _hash_do_token(token_atual) if token_atual else None
+    return repo_tokens.apagar_do_usuario(usuario_id, exceto_hash=exceto)
 
 
 def usuario_do_token(token: Optional[str]) -> Optional[Usuario]:

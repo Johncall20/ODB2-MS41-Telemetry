@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useAutenticacao } from "../hooks/useAutenticacao.js";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { dataHora } from "../formato.js";
+import { MEUS_CARROS, dataHora } from "../formato.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Migalha } from "../componentes/ui/Migalha.jsx";
 import c from "../estilos/comum.module.css";
@@ -18,6 +18,13 @@ import s from "./VeiculoFormulario.module.css";
   Cadastro e edicao na mesma tela; o id na URL decide qual. Placa repetida
   volta 409, e a de um carro arquivado oferece restaurar.
 */
+
+/*
+  Valor do <select> de dono para o carro da propria conta. Nao e um id:
+  o front nao conhece o id do cliente implicito (ele pode nem existir
+  ainda), e manda `meus_carros: true` no lugar.
+*/
+const MEUS = "meus";
 
 const VAZIO = {
   placa: "",
@@ -35,10 +42,15 @@ const VAZIO = {
 export function VeiculoFormulario() {
   const { usuario } = useAutenticacao();
   // Cliente e coisa de PROFISSIONAL. A conta PARTICULAR nao escolhe: o
-  // backend poe o carro no cliente implicito dela, e a palavra "cliente"
-  // nao aparece na tela.
+  // backend poe o carro novo no cliente implicito dela e, na edicao,
+  // mantem o dono que o carro ja tinha. A palavra "cliente" nao aparece.
   const escolheCliente = usuario?.papel === "PROFISSIONAL";
+  // So os ativos: cliente arquivado nao recebe carro.
   const [clientes, setClientes] = useState([]);
+  // O cliente atual do carro quando ele esta arquivado. Entra no seletor
+  // so para esta edicao: sem ele o <select> ficaria sem a opcao do valor
+  // atual e o `required` travaria o salvar de qualquer outro campo.
+  const [clienteArquivado, setClienteArquivado] = useState(null);
 
   const { id } = useParams();
   const navegar = useNavigate();
@@ -62,9 +74,12 @@ export function VeiculoFormulario() {
     if (!editando) return;
     api
       .lerVeiculo(id)
-      .then(({ veiculo, total_sessoes }) => {
+      .then(({ veiculo, cliente, total_sessoes }) => {
         const { id: _ignora, criado_em: _tambem, arquivado_em: _fora, ...resto } = veiculo;
-        setCampos({ ...VAZIO, ...resto });
+        // O carro da propria conta aparece como "Meus carros", nao pelo id.
+        const dono = cliente?.implicito ? MEUS : resto.cliente_id ?? "";
+        setCampos({ ...VAZIO, ...resto, cliente_id: dono });
+        setClienteArquivado(cliente && cliente.arquivado_em ? cliente : null);
         setSessoesGravadas(total_sessoes);
         setCarregando(false);
       })
@@ -100,12 +115,16 @@ export function VeiculoFormulario() {
     setPlacaArquivada(null);
     setOcupado(true);
     try {
-      // `cliente_id` sai do <select> como texto, e vazio quando a conta e
-      // PARTICULAR (que nem ve o campo). O backend espera numero ou nada:
-      // string vazia seria erro de validacao em vez de "escolhe por mim".
+      // `cliente_id` sai do <select> como texto: um id, ou MEUS para o
+      // carro da propria conta. O backend recebe um dos dois - numero em
+      // `cliente_id` ou `meus_carros: true`, nunca os dois (seria 422).
+      // PARTICULAR nao manda nada: o dono e decidido la.
+      const meus = escolheCliente && campos.cliente_id === MEUS;
       const corpo = {
         ...campos,
-        cliente_id: campos.cliente_id ? Number(campos.cliente_id) : null,
+        cliente_id:
+          escolheCliente && campos.cliente_id && !meus ? Number(campos.cliente_id) : null,
+        meus_carros: meus,
       };
       const salvo = editando
         ? await api.editarVeiculo(id, corpo)
@@ -164,6 +183,14 @@ export function VeiculoFormulario() {
               required
             >
               <option value="">escolha o cliente</option>
+              {/* Sempre presente: o mecanico tambem tem carro proprio, e
+                  sem esta opcao precisaria trocar de papel para cadastra-lo. */}
+              <option value={MEUS}>{MEUS_CARROS}</option>
+              {clienteArquivado && (
+                <option value={clienteArquivado.id}>
+                  {clienteArquivado.nome} (arquivado)
+                </option>
+              )}
               {clientes.map((cl) => (
                 <option key={cl.id} value={cl.id}>
                   {cl.nome}
@@ -172,7 +199,7 @@ export function VeiculoFormulario() {
             </select>
             {clientes.length === 0 && (
               <span className={c.celulaNula}>
-                Nenhum cliente cadastrado — cadastre um em Clientes antes.
+                Nenhum cliente ativo — para um carro de cliente, cadastre-o antes em Clientes.
               </span>
             )}
           </label>

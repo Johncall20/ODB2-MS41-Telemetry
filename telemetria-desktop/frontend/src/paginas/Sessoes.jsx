@@ -203,6 +203,7 @@ export function Sessoes() {
       <div className={c.filtros}>
         <FiltroPopover
           rotulo="Período"
+          rotuloAcima={false}
           exclusivo
           opcoes={PERIODOS}
           valor={filtro.periodo}
@@ -235,6 +236,7 @@ export function Sessoes() {
 
         <FiltroPopover
           rotulo="Eventos"
+          rotuloAcima={false}
           opcoes={EVENTOS}
           valor={marcadosEvento}
           onChange={alternarEvento}

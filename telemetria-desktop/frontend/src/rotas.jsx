@@ -6,9 +6,11 @@
 */
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./layout/Shell.jsx";
-import { ExigeSessao, SoDeslogado } from "./layout/Guarda.jsx";
+import { ExigeSessao, SoDeslogado, SoProfissional } from "./layout/Guarda.jsx";
 import { Login } from "./paginas/Login.jsx";
 import { CriarConta } from "./paginas/CriarConta.jsx";
+import { Cliente } from "./paginas/Cliente.jsx";
+import { ClienteFormulario } from "./paginas/ClienteFormulario.jsx";
 import { Clientes } from "./paginas/Clientes.jsx";
 import { Conta } from "./paginas/Conta.jsx";
 import { Veiculos } from "./paginas/Veiculos.jsx";
@@ -56,10 +58,16 @@ export function Rotas() {
         <Route path="/sessoes/:id/analise" element={<Analise />} />
         <Route path="/sessoes/:id/exportar" element={<Exportar />} />
         <Route path="/relatorios" element={<Relatorios />} />
-        {/* Clientes existe para as duas contas: quem some do caminho da
-            PARTICULAR e o item da sidebar, nao a rota. Esconder a rota
-            tambem daria 404 em link salvo de quando a conta era outra. */}
-        <Route path="/clientes" element={<Clientes />} />
+        {/* Clientes e so do PROFISSIONAL. Para o PARTICULAR a guarda
+            redireciona a /veiculos em vez de sumir com a rota: um link
+            salvo de quando a conta era outra leva aos carros, nao a um
+            404. */}
+        <Route element={<SoProfissional />}>
+          <Route path="/clientes" element={<Clientes />} />
+          <Route path="/clientes/novo" element={<ClienteFormulario />} />
+          <Route path="/clientes/:id" element={<Cliente />} />
+          <Route path="/clientes/:id/editar" element={<ClienteFormulario />} />
+        </Route>
         <Route path="/conta" element={<Conta />} />
         <Route path="*" element={<Navigate to="/veiculos" replace />} />
       </Route>

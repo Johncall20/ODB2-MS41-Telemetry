@@ -103,13 +103,25 @@ export function BarraLateral() {
       <div className={s.vao} />
 
       <div className={s.rodape}>
-        <span className={s.avatar}>{iniciais(usuario?.nome || "")}</span>
-        <span className={s.usuario}>
-          <span className={s.usuarioNome}>{usuario?.nome}</span>
-          <span className={s.usuarioPapel}>
-            {ROTULO_PAPEL[usuario?.papel] || usuario?.papel}
+        {/*
+          A conta logada e o caminho ate /conta: e onde se troca nome,
+          e-mail, senha e papel, e onde se exclui a conta. Mesmo realce de
+          hover e de ativo dos links de cima; o Sair fica fora do link,
+          ao lado, para um clique no nome nunca deslogar.
+        */}
+        <NavLink
+          to="/conta"
+          title="Minha conta"
+          className={({ isActive }) => (isActive ? `${s.conta} ${s.contaAtiva}` : s.conta)}
+        >
+          <span className={s.avatar}>{iniciais(usuario?.nome || "")}</span>
+          <span className={s.usuario}>
+            <span className={s.usuarioNome}>{usuario?.nome}</span>
+            <span className={s.usuarioPapel}>
+              {ROTULO_PAPEL[usuario?.papel] || usuario?.papel}
+            </span>
           </span>
-        </span>
+        </NavLink>
         <button
           className={s.sair}
           type="button"

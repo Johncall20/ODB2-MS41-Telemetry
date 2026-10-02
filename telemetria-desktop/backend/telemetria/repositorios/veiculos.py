@@ -85,11 +85,16 @@ def listar_para_tela(
     direcao: str = "desc",
     situacoes: Optional[list[str]] = None,
     incluir_arquivados: bool = False,
+    cliente_id: Optional[int] = None,
 ) -> list[dict]:
     """Linhas da tela de Veiculos: o carro mais o agregado das sessoes.
 
     Dicionario e nao modelo porque total e ultima sessao saem de um LEFT
     JOIN. `situacoes` soma com OR e vai no HAVING, nao no WHERE.
+
+    `cliente_id` recorta os carros de um cliente - e a lista da tela do
+    cliente, que reaproveita os filtros desta em vez de ter consulta
+    propria.
     """
     total = func.count(Sessao.id)
     ultima = func.max(Sessao.iniciada_em)
@@ -101,14 +106,17 @@ def listar_para_tela(
         select(
             Veiculo,
             Cliente.nome.label("cliente"),
+            Cliente.implicito.label("cliente_implicito"),
             total.label("total_sessoes"),
             ultima.label("ultima_sessao"),
         )
         .join(Cliente, Cliente.id == Veiculo.cliente_id, isouter=True)
         .join(Sessao, Sessao.veiculo_id == Veiculo.id, isouter=True)
-        .group_by(Veiculo.id, Cliente.nome)
+        .group_by(Veiculo.id, Cliente.nome, Cliente.implicito)
     )
     consulta = _do_usuario(consulta, usuario_id)
+    if cliente_id is not None:
+        consulta = consulta.where(Veiculo.cliente_id == cliente_id)
 
     situacoes = [s for s in (situacoes or []) if s in SITUACOES]
 
@@ -146,7 +154,10 @@ def listar_para_tela(
     colunas = {
         "placa": Veiculo.placa,
         "modelo": Veiculo.modelo,
-        "cliente": func.lower(Cliente.nome),
+        # O implicito ("Meus carros" na tela) ordena como texto vazio: fica
+        # no topo em A-Z e no fim em Z-A. Ordenar pelo nome dele poria os
+        # carros da propria conta no meio dos clientes, pelo nome da pessoa.
+        "cliente": case((Cliente.implicito == True, ""), else_=func.lower(Cliente.nome)),  # noqa: E712
         "criado_em": Veiculo.criado_em,
         "ultima_sessao": ultima,
         "total_sessoes": total,
@@ -164,8 +175,14 @@ def listar_para_tela(
 
     with sessao_db() as db:
         return [
-            {"veiculo": v, "cliente": cliente, "total_sessoes": n, "ultima_sessao": quando}
-            for v, cliente, n, quando in db.exec(consulta).all()
+            {
+                "veiculo": v,
+                "cliente": cliente,
+                "cliente_implicito": bool(implicito),
+                "total_sessoes": n,
+                "ultima_sessao": quando,
+            }
+            for v, cliente, implicito, n, quando in db.exec(consulta).all()
         ]
 
 
@@ -198,7 +215,13 @@ def buscar_por_placa(
         consulta = _do_usuario(select(Veiculo).where(Veiculo.placa == placa), usuario_id)
         if not incluir_arquivados:
             consulta = consulta.where(Veiculo.arquivado_em == None)  # noqa: E711
-        return db.exec(consulta.order_by(Veiculo.arquivado_em)).first()
+        # O ativo primeiro: com um ativo e um arquivado de mesma placa, a
+        # resposta certa e "placa em uso", nao "restaurar o arquivado" -
+        # restaurar daria 409 pelo mesmo ativo. `nulls_first` explicito
+        # porque o Postgres poe NULL no FIM de um ORDER BY crescente.
+        return db.exec(
+            consulta.order_by(Veiculo.arquivado_em.asc().nulls_first())
+        ).first()
 
 
 def criar(veiculo: Veiculo) -> Veiculo:

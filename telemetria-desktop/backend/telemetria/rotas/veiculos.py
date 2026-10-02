@@ -36,16 +36,23 @@ def listar(
     direcao: Literal["asc", "desc"] = "desc",
     situacao: list[Literal["recentes", "nunca", "arquivados"]] = Query([]),
     incluir_arquivados: bool = False,
+    cliente_id: int | None = None,
     usuario: Usuario = Depends(usuario_atual),
 ):
     """Lista da tela de Veiculos, ja filtrada e ordenada.
 
-    `situacao` repete na query string e as marcadas se SOMAM.
+    `situacao` repete na query string e as marcadas se SOMAM. `cliente_id`
+    recorta os carros de um cliente (a tela do cliente); de outra conta
+    devolve lista vazia, porque o recorte por dono vem antes.
+
+    `cliente_implicito` diz que o carro e da propria conta: a tela escreve
+    "Meus carros" no lugar do nome, que seria o da pessoa.
     """
     return [
         {
             **linha["veiculo"].model_dump(),
             "cliente": linha["cliente"],
+            "cliente_implicito": linha["cliente_implicito"],
             "total_sessoes": linha["total_sessoes"],
             "ultima_sessao": linha["ultima_sessao"],
         }
@@ -56,6 +63,7 @@ def listar(
             direcao=direcao,
             situacoes=list(situacao),
             incluir_arquivados=incluir_arquivados,
+            cliente_id=cliente_id,
         )
     ]
 
@@ -120,39 +128,78 @@ def _conflito_de_placa(placa: str, usuario_id: int, ignorando: int | None = None
     )
 
 
-def _dono_do_carro(entrada: VeiculoEntrada, usuario: Usuario) -> dict:
+def _dono_do_carro(
+    entrada: VeiculoEntrada, usuario: Usuario, atual: Veiculo | None = None
+) -> dict:
     """Os dois campos de dono do veiculo, que TEM DE CONCORDAR.
 
     Devolve `{"usuario_id": ..., "cliente_id": ...}` com o invariante
     `veiculo.usuario_id == veiculo.cliente.usuario_id` garantido por
     construcao: o `usuario_id` e o da conta logada, e o cliente so passa
-    daqui se `repo_clientes.buscar()` o encontrar NESSA conta. Nao ha
-    caminho em que os dois discordem - por isso a checagem mora aqui, no
-    unico lugar que monta os dois.
+    daqui se for DESSA conta - o atual do carro (que ja e dela) ou um que
+    `repo_clientes.buscar()` encontre nela. Nao ha caminho em que os dois
+    discordem - por isso a checagem mora aqui, no unico lugar que monta os
+    dois.
 
-    PARTICULAR nunca escolhe: cai no cliente implicito da conta, criado na
-    hora se ainda nao existir. E o que deixa essa conta ter carro sem ver
-    a palavra "cliente".
+    `atual` e o carro sendo editado; `None` no cadastro. **Na edicao o
+    dono so muda quando a entrada pede troca explicita** - a troca de
+    papel nunca move carro:
 
-    PROFISSIONAL escolhe, e o cliente tem de ser dele: id de outra conta e
-    tratado como inexistente (404, nao 403).
+    - PARTICULAR nunca escolhe. No cadastro cai no cliente implicito da
+      conta (criado na hora se preciso); na edicao o carro fica com o
+      cliente que ja tinha - mesmo um cliente de quando a conta era
+      PROFISSIONAL. `cliente_id` e `meus_carros` sao ignorados.
+    - PROFISSIONAL manda `cliente_id` ou `meus_carros` (o implicito, para o
+      carro proprio de quem atende cliente). Os dois juntos e 422. O
+      cliente atual e sempre aceito, mesmo arquivado; trocar, so para um
+      cliente ATIVO e nao implicito da conta. Id de outra conta e tratado
+      como inexistente (404, nao 403).
     """
     if usuario.papel == PapelUsuario.PARTICULAR:
+        if atual is not None and atual.cliente_id is not None:
+            return {"usuario_id": usuario.id, "cliente_id": atual.cliente_id}
         cliente = repo_clientes.implicito_de(usuario.id, usuario.nome)
-    else:
-        if entrada.cliente_id is None:
-            raise HTTPException(422, "escolha o cliente dono do veiculo")
-        cliente = repo_clientes.buscar(entrada.cliente_id, usuario.id)
-        if cliente is None:
-            raise HTTPException(404, "cliente nao encontrado")
+        return {"usuario_id": usuario.id, "cliente_id": cliente.id}
+
+    if entrada.meus_carros and entrada.cliente_id is not None:
+        raise HTTPException(422, 'escolha um cliente ou "Meus carros", nao os dois')
+    if entrada.meus_carros:
+        cliente = repo_clientes.implicito_de(usuario.id, usuario.nome)
+        return {"usuario_id": usuario.id, "cliente_id": cliente.id}
+    if entrada.cliente_id is None:
+        raise HTTPException(422, "escolha o cliente dono do veiculo")
+    if atual is not None and entrada.cliente_id == atual.cliente_id:
+        return {"usuario_id": usuario.id, "cliente_id": atual.cliente_id}
+
+    cliente = repo_clientes.buscar(entrada.cliente_id, usuario.id)
+    # O implicito so entra por `meus_carros`: pelo id ele responde como
+    # inexistente, igual as rotas de escrita de cliente.
+    if cliente is None or cliente.implicito:
+        raise HTTPException(404, "cliente nao encontrado")
+    if cliente.arquivado_em is not None:
+        raise HTTPException(
+            409,
+            {
+                "erro": "cliente_arquivado",
+                "mensagem": f"o cliente {cliente.nome} esta arquivado; "
+                "desarquive-o antes de colocar um carro nele",
+                "cliente_id": cliente.id,
+            },
+        )
     return {"usuario_id": usuario.id, "cliente_id": cliente.id}
+
+
+def _campos_do_carro(entrada: VeiculoEntrada, dono: dict) -> dict:
+    """Os campos que viram coluna. `meus_carros` e instrucao para o
+    `_dono_do_carro()`, nao dado do veiculo."""
+    return {**entrada.model_dump(exclude={"meus_carros"}), **dono}
 
 
 @router.post("")
 def criar(entrada: VeiculoEntrada, usuario: Usuario = Depends(usuario_atual)):
     """Cadastra um veiculo. Placa repetida devolve 409, nao 500."""
     _conflito_de_placa(entrada.placa, usuario.id)
-    campos = {**entrada.model_dump(), **_dono_do_carro(entrada, usuario)}
+    campos = _campos_do_carro(entrada, _dono_do_carro(entrada, usuario))
     try:
         return repo_veiculos.criar(Veiculo(**campos))
     except IntegrityError:
@@ -166,11 +213,18 @@ def criar(entrada: VeiculoEntrada, usuario: Usuario = Depends(usuario_atual)):
 def editar(
     veiculo_id: int, entrada: VeiculoEntrada, usuario: Usuario = Depends(usuario_atual)
 ):
-    """Grava o formulario de edicao. Nao desarquiva o veiculo."""
+    """Grava o formulario de edicao. Nao desarquiva o veiculo.
+
+    Trocar o cliente e uma operacao valida - as sessoes vao junto, porque
+    pertencem ao carro, nao ao cliente. Quem decide se a troca vale e
+    `_dono_do_carro()`, que recebe o carro atual para nao move-lo quando a
+    entrada nao pediu.
+    """
+    atual = repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True)
+    if atual is None:
+        raise HTTPException(404, "veiculo nao encontrado")
     _conflito_de_placa(entrada.placa, usuario.id, ignorando=veiculo_id)
-    # O dono e remontado tambem na edicao: trocar o cliente de um carro e
-    # uma operacao valida, e os dois campos precisam continuar de acordo.
-    campos = {**entrada.model_dump(), **_dono_do_carro(entrada, usuario)}
+    campos = _campos_do_carro(entrada, _dono_do_carro(entrada, usuario, atual))
     try:
         veiculo = repo_veiculos.editar(veiculo_id, usuario.id, campos)
     except IntegrityError:
@@ -211,9 +265,50 @@ def arquivar(
 
 @router.post("/{veiculo_id}/restaurar")
 def restaurar(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
-    """Traz o veiculo de volta as listas, com o historico intacto."""
-    if not repo_veiculos.restaurar(veiculo_id, usuario.id):
+    """Traz o veiculo de volta as listas, com o historico intacto.
+
+    Duas recusas, as duas 409 com mensagem para a tela:
+
+    - **cliente arquivado.** Restaurar deixaria um carro ativo pendurado
+      num cliente arquivado - o estado que o 409 de arquivar cliente
+      existe para impedir. Desarquiva o cliente ou move o carro antes.
+    - **placa em uso.** Arquivar libera a placa, entao outro carro ativo
+      pode te-la agora; o indice unico `(usuario_id, placa)` recusaria, e
+      sem esta checagem isso saia como 500.
+    """
+    veiculo = repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True)
+    if veiculo is None:
         raise HTTPException(404, "veiculo nao encontrado")
+    if veiculo.arquivado_em is None:
+        return veiculo
+
+    if veiculo.cliente_id is not None:
+        cliente = repo_clientes.buscar(veiculo.cliente_id, usuario.id)
+        if cliente is not None and cliente.arquivado_em is not None:
+            raise HTTPException(
+                409,
+                {
+                    "erro": "cliente_arquivado",
+                    "mensagem": f"o cliente {cliente.nome} esta arquivado; "
+                    "desarquive o cliente ou mova o carro para outro antes de restaurar",
+                    "cliente_id": cliente.id,
+                },
+            )
+
+    em_uso = {
+        "erro": "placa_em_uso",
+        "mensagem": f"ja existe um veiculo ativo com a placa {veiculo.placa}; "
+        "arquive-o ou troque a placa deste antes de restaurar",
+    }
+    ativo = repo_veiculos.buscar_por_placa(veiculo.placa, usuario.id, incluir_arquivados=False)
+    if ativo is not None and ativo.id != veiculo_id:
+        raise HTTPException(409, {**em_uso, "veiculo_id": ativo.id})
+    try:
+        repo_veiculos.restaurar(veiculo_id, usuario.id)
+    except IntegrityError:
+        # A corrida entre a checagem e o UPDATE, e a placa vazia, que a
+        # busca por placa nao compara.
+        raise HTTPException(409, em_uso)
     return repo_veiculos.buscar(veiculo_id, usuario.id)
 
 

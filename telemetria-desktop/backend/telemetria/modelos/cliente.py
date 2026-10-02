@@ -11,8 +11,10 @@ esconder o cadastro de clientes. Duas arvores de consulta - uma com
 cliente, outra sem - dobrariam cada filtro de veiculo que ja existe.
 """
 
+from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
 
 
@@ -27,3 +29,9 @@ class Cliente(SQLModel, table=True):
     # PARTICULAR, e para nao criar um segundo implicito quando um
     # PROFISSIONAL vira PARTICULAR.
     implicito: bool = False
+
+    # Soft delete, igual ao do veiculo: nulo = ativo. O cliente arquivado
+    # sai da lista e do seletor do formulario de veiculo, mas continua
+    # gravado. So se arquiva cliente sem carro ATIVO - quem garante e
+    # `rotas/clientes.py`, que devolve 409 com a contagem.
+    arquivado_em: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))

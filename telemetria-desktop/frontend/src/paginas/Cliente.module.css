@@ -1,0 +1,47 @@
+/* Tela do cliente. Tabela, botoes e cabecalho vem de comum.module.css. */
+
+/*
+  Confirmacao do arquivamento, inline, como a do veiculo: precisa dizer
+  que nada e apagado, e isso nao cabe num confirm() do navegador.
+*/
+.confirmacao {
+  margin-top: 26px;
+  padding: 20px 22px;
+  border: 1px solid var(--borda-risco);
+  border-radius: 8px;
+  background: var(--chip-risco);
+  max-width: 900px;
+}
+
+.pergunta {
+  margin: 0;
+  font-size: 17px;
+  color: var(--texto);
+}
+
+.detalhe {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--apagado);
+}
+
+.botoes {
+  display: flex;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.secao-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 50px;
+}
+
+.secao-titulo {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 500;
+  color: var(--texto);
+}

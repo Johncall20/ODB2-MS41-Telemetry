@@ -1,5 +1,6 @@
 /*
-  Quem pode ver o que. Duas guardas simetricas, usadas no `rotas.jsx`.
+  Quem pode ver o que. Duas guardas simetricas, usadas no `rotas.jsx`, e
+  uma de papel - `SoProfissional`, na frente das telas de cliente.
 
   As duas esperam `carregando` acabar antes de decidir. Sem isso, todo F5
   numa tela interna redirecionaria para /login antes de o
@@ -34,5 +35,20 @@ export function SoDeslogado() {
 
   if (carregando) return <Esperando />;
   if (usuario) return <Navigate to="/veiculos" replace />;
+  return <Outlet />;
+}
+
+/*
+  As telas de cliente sao so do PROFISSIONAL: o PARTICULAR nao gerencia
+  clientes, e o backend responde 403 nas rotas de escrita. Vai por dentro
+  do ExigeSessao, entao o usuario ja esta carregado aqui.
+
+  Redireciona em vez de dar 404: um link salvo de quando a conta era
+  PROFISSIONAL leva para os carros, que continuam todos visiveis.
+*/
+/** Envolve as telas de cliente: conta PARTICULAR vai para /veiculos. */
+export function SoProfissional() {
+  const { usuario } = useAutenticacao();
+  if (usuario?.papel !== "PROFISSIONAL") return <Navigate to="/veiculos" replace />;
   return <Outlet />;
 }

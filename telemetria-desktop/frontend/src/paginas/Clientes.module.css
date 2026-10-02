@@ -1,22 +1,9 @@
-/* Tela de Clientes. A tabela e os filtros vem de `comum.module.css`; aqui
-   fica so o formulario de cadastro embutido. */
+/* So o que e desta tela. Tabela, filtro e chips de filtro ativo sao os da
+   tela de Veiculos e moram em estilos/comum.module.css. */
 
-.form-linha {
-  display: flex;
-  gap: 14px;
-  align-items: flex-end;
-  margin: 26px 0 34px;
-  max-width: 900px;
-}
-
-.form-campo {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  flex: 1;
-  min-width: 0;
-}
-
-.contato {
-  color: var(--apagado);
-}
+/* Nome largo, contato no meio, contagem estreita e a coluna da seta com
+   a mesma largura fixa da lista de Veiculos. */
+.tabela th:nth-child(1) { width: 38%; }
+.tabela th:nth-child(2) { width: 38%; }
+.tabela th:nth-child(3) { width: 20%; }
+.tabela th:nth-child(4) { width: 50px; }

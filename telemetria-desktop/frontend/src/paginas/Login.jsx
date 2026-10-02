@@ -2,10 +2,10 @@
   Entrar (node 2:2). Fora do Shell: sem sidebar, layout de duas colunas.
 
   Nao ha "Esqueci a senha" nem "Manter conectado", embora estejam no
-  Figma: o primeiro depende de servidor de e-mail e o segundo de uma
-  decisao sobre validade de token. Os dois estao registrados como
-  pendencia no CLAUDE.md - desenhar o controle sem o que ele precisa
-  atras seria prometer o que a tela nao cumpre.
+  Figma: o primeiro depende de servidor de e-mail (esta em "Limitacoes
+  conhecidas" no CLAUDE.md) e o segundo de uma decisao sobre validade de
+  token. Desenhar o controle sem o que ele precisa atras seria prometer o
+  que a tela nao cumpre.
 */
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
