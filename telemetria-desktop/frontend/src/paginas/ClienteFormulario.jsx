@@ -8,11 +8,13 @@
   Mexe aqui quem acrescentar campo ao cliente, junto com ClienteEntrada
   no backend. Sem node no Figma.
 */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Migalha } from "../componentes/ui/Migalha.jsx";
+import { FalhaDeCarga } from "../componentes/ui/FalhaDeCarga.jsx";
+import { useCarga } from "../componentes/ui/useCarga.js";
 import c from "../estilos/comum.module.css";
 
 /** Cadastro e edicao de cliente - a mesma tela, com ou sem id na URL. */
@@ -23,30 +25,28 @@ export function ClienteFormulario() {
 
   const [nome, setNome] = useState("");
   const [contato, setContato] = useState("");
-  const [carregando, setCarregando] = useState(editando);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
+  // Erro por campo do 422 ({nome, contato}), escrito embaixo de cada um.
+  const [errosCampo, setErrosCampo] = useState({});
 
-  useEffect(() => {
-    if (!editando) return;
-    api
-      .lerCliente(id)
-      .then((cliente) => {
-        setNome(cliente.nome);
-        setContato(cliente.contato);
-        setCarregando(false);
-      })
-      .catch((e) => {
-        setErro(String(e.message || e));
-        setCarregando(false);
-      });
-  }, [id, editando]);
+  // Editando, o cliente vem pela URL: id invalido ou 404 nao abre um
+  // formulario vazio (salvar daria outro 404), mostra a falha.
+  const carga = useCarga(id, api.lerCliente, {
+    ativo: editando,
+    aoCarregar: (cliente) => {
+      setNome(cliente.nome);
+      // Contato vazio chega null; o <input> controlado quer "".
+      setContato(cliente.contato ?? "");
+    },
+  });
 
   const voltar = editando ? `/clientes/${id}` : "/clientes";
 
   async function salvar(e) {
     e.preventDefault();
     setErro("");
+    setErrosCampo({});
     setOcupado(true);
     try {
       const salvo = editando
@@ -54,13 +54,17 @@ export function ClienteFormulario() {
         : await api.criarCliente({ nome, contato });
       navegar(`/clientes/${salvo.id}`, { replace: true });
     } catch (falha) {
-      setErro(String(falha.message || falha));
+      const campos = falha.campos || {};
+      setErrosCampo(campos);
+      // Sem campo conhecido, a frase vai para o Aviso.
+      if (!campos.nome && !campos.contato) setErro(String(falha.message || falha));
     } finally {
       setOcupado(false);
     }
   }
 
-  if (carregando) return <p className={c.paginaVazia}>Carregando…</p>;
+  if (carga.falha) return <FalhaDeCarga recurso="cliente" falha={carga.falha} aoTentar={carga.tentarDeNovo} />;
+  if (carga.carregando) return <p className={c.paginaVazia}>Carregando…</p>;
 
   return (
     <>
@@ -74,22 +78,24 @@ export function ClienteFormulario() {
         <label className={`${c.campo} ${c.formularioLargo}`}>
           <span className={c.campoRotulo}>Nome</span>
           <input
-            className={c.entrada}
+            className={`${c.entrada} ${errosCampo.nome ? c.entradaInvalida : ""}`.trim()}
             value={nome}
             onChange={(e) => setNome(e.target.value)}
             placeholder="Nome do cliente"
             required
             autoFocus
           />
+          {errosCampo.nome && <span className={c.campoErro}>{errosCampo.nome}</span>}
         </label>
         <label className={`${c.campo} ${c.formularioLargo}`}>
           <span className={c.campoRotulo}>Contato</span>
           <input
-            className={c.entrada}
+            className={`${c.entrada} ${errosCampo.contato ? c.entradaInvalida : ""}`.trim()}
             value={contato}
             onChange={(e) => setContato(e.target.value)}
             placeholder="Telefone ou e-mail"
           />
+          {errosCampo.contato && <span className={c.campoErro}>{errosCampo.contato}</span>}
         </label>
 
         {erro && <Aviso className={c.formularioLargo}>{erro}</Aviso>}

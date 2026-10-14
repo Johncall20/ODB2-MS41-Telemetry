@@ -9,7 +9,14 @@ import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, Search, X } from "lucide-react";
 import { api } from "../api.js";
 import { useAutenticacao } from "../hooks/useAutenticacao.js";
-import { haQuantoTempo, nomeCliente, placa } from "../formato.js";
+import {
+  ROTULO_PERFIL_ECU,
+  anoVeiculo,
+  formatarPlaca,
+  haQuantoTempo,
+  nomeCliente,
+  rotulo,
+} from "../formato.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Chip } from "../componentes/ui/Chip.jsx";
 import { Seta } from "../componentes/ui/Seta.jsx";
@@ -163,8 +170,8 @@ export function Veiculos() {
             onChange={(e) => setBuscaLocal(e.target.value)}
             placeholder={
               mostraCliente
-                ? "Buscar por placa, modelo ou cliente"
-                : "Buscar por placa ou modelo"
+                ? "Buscar por placa, marca, modelo ou cliente"
+                : "Buscar por placa, marca ou modelo"
             }
             aria-label="Buscar veículo"
           />
@@ -250,16 +257,18 @@ export function Veiculos() {
               >
                 <td>
                   <span className={c.placaLinha}>
-                    <span className={`${c.mono} ${s.placa}`}>{placa(v.placa) || "—"}</span>
+                    <span className={`${c.mono} ${s.placa}`}>{formatarPlaca(v.placa) || "—"}</span>
                     {v.arquivado_em && <Chip>arquivado</Chip>}
                   </span>
                 </td>
                 <td>
                   <span className={c.celulaForte}>
-                    {v.marca} {v.modelo}
+                    {v.descricao}
                   </span>
                   <span className={c.celulaFraca}>
-                    {[v.ano, v.motor, v.ecu].filter(Boolean).join(" · ")}
+                    {[anoVeiculo(v), v.motor, rotulo(ROTULO_PERFIL_ECU, v.perfil_ecu)]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </td>
                 {mostraCliente && (

@@ -1,0 +1,80 @@
+/*
+  O popup "Nova sessão". Mesmo desenho do cartao de "Sessão encerrada"
+  (Sessao.module.css): fundo alto, borda fina, cantos de 12px, respiro
+  largo - so que sobre a pagina escurecida.
+*/
+
+.dialogo {
+  width: 760px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  background: var(--fundo-alto);
+  color: var(--texto);
+  overflow: auto;
+}
+
+.dialogo::backdrop {
+  background: rgba(5, 8, 15, 0.72);
+}
+
+.corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding: 40px 44px;
+}
+
+.titulo {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.28px;
+}
+
+.carro {
+  margin: 8px 0 0;
+  font-size: 16px;
+  color: var(--apagado);
+}
+
+.secao {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.secao-titulo {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.km {
+  max-width: 280px;
+}
+
+.apoio {
+  margin: 0;
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+/* Km menor que o do carro: aviso logo abaixo do campo, sem painel. */
+.alerta {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--ambar);
+  border-radius: 4px;
+  background: var(--chip-ambar);
+  font-size: 14px;
+  color: var(--ambar);
+}
+
+.rodape {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+}

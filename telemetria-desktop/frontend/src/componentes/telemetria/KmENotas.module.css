@@ -1,0 +1,38 @@
+/*
+  O card de km e notas de uma sessao gravada. A largura vem de quem o
+  poe na tela; a grade se ajusta a ela (container query): largo, o km a
+  esquerda e as notas a direita; estreito, um embaixo do outro.
+*/
+
+.dados {
+  gap: 16px;
+  container-type: inline-size;
+}
+
+.dados-sessao {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  /* dense: com a confirmacao de km aberta (linha inteira), as notas
+     continuam na primeira linha, ao lado do km. */
+  grid-auto-flow: row dense;
+}
+
+@container (max-width: 520px) {
+  .dados-sessao {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+
+.linha-inteira {
+  grid-column: 1 / -1;
+}
+
+.km {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}

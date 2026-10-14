@@ -31,14 +31,14 @@ def exige_profissional(usuario: Usuario = Depends(usuario_atual)) -> Usuario:
             403,
             {
                 "erro": "papel_sem_clientes",
-                "mensagem": "conta particular nao gerencia clientes",
+                "mensagem": "conta particular não gerencia clientes",
             },
         )
     return usuario
 
 
 def _nao_encontrado() -> HTTPException:
-    return HTTPException(404, "cliente nao encontrado")
+    return HTTPException(404, "cliente não encontrado")
 
 
 @router.get("")

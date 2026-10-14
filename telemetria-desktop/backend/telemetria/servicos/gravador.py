@@ -16,6 +16,7 @@ from ..modelos import (
     Amostra,
     EstadoLeitor,
     Evento,
+    Limites,
     TipoEvento,
     agora,
     campos_invalidos,
@@ -124,18 +125,26 @@ class Gravador:
     # ------------------------------------------------------------- sessao
 
     def iniciar_sessao(
-        self, veiculo_id: int, observacao: str = "", dono_id: Optional[int] = None
+        self,
+        veiculo_id: int,
+        limites: dict,
+        observacao: Optional[str] = None,
+        dono_id: Optional[int] = None,
+        km: Optional[int] = None,
     ) -> dict:
         """Abre a gravacao e prepara o detector.
 
-        Os limites efetivos do carro sao resolvidos AQUI e entram por copia
-        em dois lugares: no detector, para mexer neles nao afetar esta
-        sessao, e gravados na linha da Sessao, para a gravacao continuar
-        explicavel meses depois.
+        `limites` sao os seis valores escolhidos para ESTA sessao, ja
+        validados pela rota. Entram em dois lugares: gravados nas colunas
+        `limite_*` da Sessao, que sao a unica fonte de limite do sistema, e
+        no detector, como `Limites` imutavel - a sessao nao muda de limite
+        no meio da gravacao.
+
+        `km` fica so na sessao ate o encerramento - e la que ele passa ao
+        carro, entao uma sessao descartada nunca mexe na quilometragem.
         """
-        limites = repo_limites.efetivos_do_veiculo(veiculo_id)
         sessao = repo_sessoes.criar(
-            veiculo_id, observacao, snapshot=repo_limites.para_snapshot(limites)
+            veiculo_id, observacao, snapshot=repo_limites.para_snapshot(limites), km=km
         )
         dados = {
             "id": sessao.id,
@@ -144,12 +153,13 @@ class Gravador:
             "encerrada_em": sessao.encerrada_em,
             "status": sessao.status.value,
             "observacao": sessao.observacao,
+            "km": sessao.km,
         }
 
         self.sessao_id = dados["id"]
         self.dono_id = dono_id
         self.total_amostras = 0
-        self._detector = DetectorEventos(limites=limites)
+        self._detector = DetectorEventos(limites=Limites.de(limites))
         return dados
 
     async def encerrar_sessao(self) -> Optional[dict]:

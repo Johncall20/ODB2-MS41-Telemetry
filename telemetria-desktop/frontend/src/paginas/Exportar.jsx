@@ -4,12 +4,14 @@
 
   A previa mostra o que o relatorio vai conter de verdade, nao um enfeite.
 */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { dataHora, duracao, milhar, placa } from "../formato.js";
+import { dataHora, duracao, milhar, formatarPlaca } from "../formato.js";
 import { Check, Download } from "lucide-react";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
+import { FalhaDeCarga } from "../componentes/ui/FalhaDeCarga.jsx";
+import { useCarga } from "../componentes/ui/useCarga.js";
 import { Migalha } from "../componentes/ui/Migalha.jsx";
 import { MiniaturaSerie, serieDaSessao } from "../componentes/telemetria/GraficoSessao.jsx";
 import c from "../estilos/comum.module.css";
@@ -47,8 +49,10 @@ const FORMATOS = [
 export function Exportar() {
   const { id } = useParams();
   const navegar = useNavigate();
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState("");
+  const { dados, falha, tentarDeNovo } = useCarga(id, api.lerSessao);
+  // O download e por fetch: erro dele vira aviso aqui, sem trocar a pagina.
+  const [baixando, setBaixando] = useState(false);
+  const [erroDownload, setErroDownload] = useState("");
   const [formato, setFormato] = useState("pdf");
   const [secoes, setSecoes] = useState({
     resumo: true,
@@ -56,13 +60,6 @@ export function Exportar() {
     eventos: true,
     amostras: false,
   });
-
-  useEffect(() => {
-    api
-      .lerSessao(id)
-      .then(setDados)
-      .catch((e) => setErro(String(e.message || e)));
-  }, [id]);
 
   const escolhidas = useMemo(
     () => Object.entries(secoes).filter(([, v]) => v).map(([k]) => k),
@@ -86,12 +83,24 @@ export function Exportar() {
     [serie]
   );
 
-  if (erro) return <Aviso>{erro}</Aviso>;
+  if (falha) return <FalhaDeCarga recurso="sessao" falha={falha} aoTentar={tentarDeNovo} />;
   if (!dados) return <p className={c.paginaVazia}>Carregando…</p>;
 
   const { sessao, veiculo, resumo } = dados;
   const ehPdf = formato === "pdf";
   const nada = ehPdf && escolhidas.length === 0;
+
+  async function baixar() {
+    setErroDownload("");
+    setBaixando(true);
+    try {
+      await api.baixarExportacao(id, formato, escolhidas);
+    } catch (falha) {
+      setErroDownload(falha.message);
+    } finally {
+      setBaixando(false);
+    }
+  }
 
   const conteudo = [
     { id: "resumo", rotulo: "Resumo da sessão" },
@@ -110,7 +119,7 @@ export function Exportar() {
         <div>
           <h1 className={c.paginaTitulo}>Exportar relatório</h1>
           <p className={c.paginaSubtitulo}>
-            {[placa(veiculo?.placa), `sessão de ${dataHora(sessao.iniciada_em)}`]
+            {[formatarPlaca(veiculo?.placa), `sessão de ${dataHora(sessao.iniciada_em)}`]
               .filter(Boolean)
               .join(" · ")}
           </p>
@@ -171,7 +180,7 @@ export function Exportar() {
           <div className={s.previa}>
             <p className={s.previaTitulo}>Relatório de sessão</p>
             <p className={`${s.previaLegenda} ${c.mono}`}>
-              {[placa(veiculo?.placa), veiculo && `${veiculo.marca} ${veiculo.modelo}`,
+              {[formatarPlaca(veiculo?.placa), veiculo?.descricao,
                 dataHora(sessao.iniciada_em)]
                 .filter(Boolean)
                 .join(" · ")}
@@ -236,6 +245,8 @@ export function Exportar() {
         </section>
       </div>
 
+      {erroDownload && <Aviso>{erroDownload}</Aviso>}
+
       <div className={s.acoes}>
         <button className={c.botao} type="button" onClick={() => navegar(`/sessoes/${id}/analise`)}>
           Cancelar
@@ -245,16 +256,23 @@ export function Exportar() {
             Escolha ao menos uma seção
           </button>
         ) : (
-          // Sem atributo `download`: o nome do arquivo e o que o backend manda
-          // no Content-Disposition. Po-lo aqui criaria um segundo nome, e os
-          // dois divergiriam.
-          <a
+          // O nome do arquivo e o que o backend manda no Content-Disposition
+          // (o api.js o le); a tela nao monta nome nenhum.
+          <button
             className={`${c.botao} ${c.botaoPrimario}`}
-            href={api.enderecoExportacao(id, formato, escolhidas)}
+            type="button"
+            onClick={baixar}
+            disabled={baixando}
           >
             <Download className={c.botaoIcone} size={20} aria-hidden="true" />
-            {ehPdf ? "Gerar PDF" : `Baixar ${formato.toUpperCase()}`}
-          </a>
+            {baixando
+              ? ehPdf
+                ? "Gerando PDF…"
+                : "Baixando…"
+              : ehPdf
+                ? "Gerar PDF"
+                : `Baixar ${formato.toUpperCase()}`}
+          </button>
         )}
       </div>
     </>

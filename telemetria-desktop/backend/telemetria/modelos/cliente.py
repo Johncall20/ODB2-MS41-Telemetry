@@ -14,15 +14,27 @@ cliente, outra sem - dobrariam cada filtro de veiculo que ja existe.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime
+from sqlalchemy import CheckConstraint, DateTime
 from sqlmodel import Field, SQLModel
 
 
 class Cliente(SQLModel, table=True):
+    # Espelham a migration 0008. O texto chega normalizado pela entrada
+    # (rotas/esquemas.py); o banco recusa o que escapar dela.
+    __table_args__ = (
+        CheckConstraint("nome <> '' AND nome = btrim(nome)", name="ck_cliente_nome"),
+        CheckConstraint(
+            "contato IS NULL OR (contato <> '' AND contato = btrim(contato))",
+            name="ck_cliente_contato",
+        ),
+    )
+
     id: Optional[int] = Field(default=None, primary_key=True)
     usuario_id: int = Field(foreign_key="usuario.id", index=True)
     nome: str
-    contato: str = ""
+    # Texto livre - telefone, e-mail, o que a oficina usar. Nao preenchido
+    # e NULL, nunca "".
+    contato: Optional[str] = None
 
     # Marca o cliente que o sistema criou sozinho para uma conta
     # PARTICULAR. Serve para a interface nao oferecer "editar cliente" ao

@@ -69,7 +69,9 @@ def buscar(cliente_id: int, usuario_id: int) -> Optional[Cliente]:
         ).first()
 
 
-def criar(usuario_id: int, nome: str, contato: str = "", implicito: bool = False) -> Cliente:
+def criar(
+    usuario_id: int, nome: str, contato: Optional[str] = None, implicito: bool = False
+) -> Cliente:
     """Grava um cliente na conta."""
     with sessao_db() as db:
         cliente = Cliente(

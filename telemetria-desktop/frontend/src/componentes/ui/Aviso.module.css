@@ -18,3 +18,12 @@
   border-left-color: var(--ambar);
   background: var(--chip-ambar);
 }
+
+/* A saida que o aviso oferece ("Voltar às sessões", "Editar o cadastro"):
+   na cor do aviso, sublinhada - o azul do navegador sumia no fundo. */
+.aviso a {
+  color: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

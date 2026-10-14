@@ -26,8 +26,8 @@ const DESTINOS = [
     acende: true,
     papel: "PROFISSIONAL",
   },
-  // Nao ha "Ajustes": nao existe limite global para ajustar. O limite e
-  // de cada carro, e a tela dele mora em /veiculos/:id/limites.
+  // Nao ha "Ajustes": nao existe limite global nem do carro para ajustar.
+  // Os limites sao da sessao, escolhidos no Ao vivo antes de gravar.
   { para: "/relatorios", rotulo: "Relatórios", Icone: FileText, acende: true },
 ];
 
@@ -51,10 +51,13 @@ function iniciais(nome) {
 export function BarraLateral() {
   // Do provider do Shell, nao de fetch proprio: e a mesma conexao que o
   // painel usa, entao a sidebar acusa a gravacao em qualquer tela.
-  const { status } = useTelemetria();
+  const { status, conectadoWs } = useTelemetria();
   const { usuario, sair } = useAutenticacao();
   const navegar = useNavigate();
   const gravando = Boolean(status?.gravando);
+  // Sem socket nada confirma que a gravacao continua: o ponto para de
+  // pulsar e o texto diz isso, em vez de afirmar "Gravando".
+  const semConfirmacao = gravando && !conectadoWs;
 
   async function encerrarConta() {
     await sair();
@@ -91,9 +94,9 @@ export function BarraLateral() {
             vai encerrar a sessao, entao o indicador aponta para onde agir.
           */}
             {para === "/ao-vivo" && gravando && (
-              <span className={s.gravando}>
+              <span className={`${s.gravando} ${semConfirmacao ? s.semConfirmacao : ""}`.trim()}>
                 <span className={s.ponto} />
-                Gravando
+                {semConfirmacao ? "Sem confirmação" : "Gravando"}
               </span>
             )}
           </NavLink>

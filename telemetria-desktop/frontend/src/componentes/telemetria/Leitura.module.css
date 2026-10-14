@@ -62,3 +62,9 @@
 .bloco-vermelho {
   background: var(--risco);
 }
+
+/* A amostra parou de chegar: ambar, porque e o link, nao a central que
+   deixou de responder um campo. */
+.sem-leitura {
+  color: var(--ambar);
+}

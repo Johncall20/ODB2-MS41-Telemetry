@@ -1,27 +1,14 @@
+import { Link } from "react-router-dom";
 import { cronometro, paraData } from "../../formato.js";
 import { Chip } from "../ui/Chip.jsx";
+// Nome e cor de cada tipo: a mesma fonte dos graficos da Analise.
+import { tipoDeEvento } from "./graficoApoio.js";
 import s from "./Eventos.module.css";
 
 /*
   Lista de eventos do painel (nodes 5:295 / 5:491). O horario e o tempo
   desde o inicio da sessao; fora de uma sessao, a hora do relogio.
 */
-
-const NOMES = {
-  INICIO_SESSAO: "Início da sessão",
-  FIM_SESSAO: "Fim da sessão",
-  SHIFT_LIGHT: "Shift light",
-  RPM_ALTO: "Giro acima do limite",
-  TEMP_ALTA: "Temperatura alta",
-  BATERIA_BAIXA: "Bateria baixa",
-  PERDA_CONEXAO: "Perda de conexão",
-  LEITURA_INCOMPLETA: "Leitura incompleta",
-};
-
-// Vermelho para o que pode danificar o motor ou invalidar a gravacao;
-// ambar para aviso; cinza para os marcos de rotina da sessao.
-const GRAVES = new Set(["RPM_ALTO", "TEMP_ALTA", "BATERIA_BAIXA", "PERDA_CONEXAO"]);
-const AVISOS = new Set(["SHIFT_LIGHT", "LEITURA_INCOMPLETA"]);
 
 function marca(evento, inicioSessao) {
   const quando = paraData(evento.criado_em);
@@ -32,16 +19,14 @@ function marca(evento, inicioSessao) {
   return quando.toLocaleTimeString("pt-BR", { hour12: false });
 }
 
-function tomDoChip(tipo) {
-  if (GRAVES.has(tipo)) return "risco";
-  if (AVISOS.has(tipo)) return "alerta";
-  return "neutro";
-}
-
 const VAZIO_PADRAO =
   "Nada registrado. Os eventos passam a ser gravados quando você iniciar a sessão.";
 
-export function Eventos({ eventos, iniciadaEm, vazio = VAZIO_PADRAO }) {
+/**
+ * Lista de eventos. `destino(evento)`, opcional, faz de cada item um link
+ * (a tela da sessao leva a Analise com `?evento=` e `?t=`).
+ */
+export function Eventos({ eventos, iniciadaEm, vazio = VAZIO_PADRAO, destino }) {
   const inicio = paraData(iniciadaEm);
 
   if (!eventos.length) {
@@ -50,13 +35,26 @@ export function Eventos({ eventos, iniciadaEm, vazio = VAZIO_PADRAO }) {
 
   return (
     <ul className={s.eventos}>
-      {eventos.map((e, i) => (
-        <li key={i} className={s.evento}>
-          <span className={s.marca}>{marca(e, inicio)}</span>
-          <Chip tom={tomDoChip(e.tipo)}>{NOMES[e.tipo] || e.tipo}</Chip>
-          <span className={s.msg}>{e.mensagem}</span>
-        </li>
-      ))}
+      {eventos.map((e, i) => {
+        const conteudo = (
+          <>
+            <span className={s.marca}>{marca(e, inicio)}</span>
+            <Chip tom={tipoDeEvento(e.tipo).tom}>{tipoDeEvento(e.tipo).nome}</Chip>
+            <span className={s.msg}>{e.mensagem}</span>
+          </>
+        );
+        return (
+          <li key={i} className={s.evento}>
+            {destino ? (
+              <Link className={s.acao} to={destino(e)} title="Ver este trecho na análise">
+                {conteudo}
+              </Link>
+            ) : (
+              <div className={s.linha}>{conteudo}</div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

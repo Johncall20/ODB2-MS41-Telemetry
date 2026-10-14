@@ -47,18 +47,27 @@ export function CriarConta() {
   const [senha, setSenha] = useState("");
   const [papel, setPapel] = useState("PROFISSIONAL");
   const [erro, setErro] = useState("");
+  // Erro por campo do 422 ({nome, email, senha}), embaixo de cada um.
+  const [errosCampo, setErrosCampo] = useState({});
   const [ocupado, setOcupado] = useState(false);
 
   async function enviar(e) {
     e.preventDefault();
     setErro("");
+    setErrosCampo({});
     setOcupado(true);
     try {
       // O backend devolve ja logado, entao daqui vai direto para dentro.
       await cadastrar({ nome, email, senha, papel });
       navegar("/veiculos", { replace: true });
     } catch (falha) {
-      setErro(String(falha.message || falha));
+      const campos = falha.campos || {};
+      setErrosCampo(campos);
+      // Sem campo com lugar na tela (o 409 de e-mail em uso, por exemplo),
+      // a frase vai para o Aviso.
+      if (!campos.nome && !campos.email && !campos.senha) {
+        setErro(String(falha.message || falha));
+      }
     } finally {
       setOcupado(false);
     }
@@ -79,7 +88,7 @@ export function CriarConta() {
             <label className={c.campo}>
               <span className={c.campoRotulo}>Nome</span>
               <input
-                className={c.entrada}
+                className={`${c.entrada} ${errosCampo.nome ? c.entradaInvalida : ""}`.trim()}
                 value={nome}
                 onChange={(ev) => setNome(ev.target.value)}
                 placeholder="Seu nome"
@@ -87,12 +96,13 @@ export function CriarConta() {
                 required
                 autoFocus
               />
+              {errosCampo.nome && <span className={c.campoErro}>{errosCampo.nome}</span>}
             </label>
 
             <label className={c.campo}>
               <span className={c.campoRotulo}>E-mail</span>
               <input
-                className={c.entrada}
+                className={`${c.entrada} ${errosCampo.email ? c.entradaInvalida : ""}`.trim()}
                 type="email"
                 value={email}
                 onChange={(ev) => setEmail(ev.target.value)}
@@ -100,6 +110,7 @@ export function CriarConta() {
                 autoComplete="email"
                 required
               />
+              {errosCampo.email && <span className={c.campoErro}>{errosCampo.email}</span>}
             </label>
 
             <label className={c.campo}>
@@ -119,6 +130,7 @@ export function CriarConta() {
                 vale para qualquer cliente.
               */}
               <span className={s.dica}>Mínimo de {SENHA_MINIMA} caracteres.</span>
+              {errosCampo.senha && <span className={c.campoErro}>{errosCampo.senha}</span>}
             </label>
 
             <fieldset className={s.papeis}>

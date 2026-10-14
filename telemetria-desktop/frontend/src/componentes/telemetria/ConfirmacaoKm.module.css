@@ -1,0 +1,40 @@
+/* Confirmacao de km menor: o mesmo desenho da confirmacao neutra do
+   formulario de veiculo, com os dois valores lado a lado. */
+
+.painel {
+  padding: 20px 22px;
+  border: 1px solid var(--ambar);
+  border-radius: 8px;
+  background: var(--chip-ambar);
+}
+
+.pergunta {
+  margin: 0;
+  font-size: 17px;
+  color: var(--texto);
+}
+
+.valores {
+  display: flex;
+  gap: 40px;
+  margin: 14px 0 0;
+}
+
+.valor {
+  margin: 4px 0 0;
+  font-size: 22px;
+  color: var(--texto);
+}
+
+.detalhe {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--apagado);
+}
+
+.botoes {
+  display: flex;
+  gap: 14px;
+  margin-top: 16px;
+}

@@ -1,0 +1,40 @@
+/* As notas da sessao: campo de varias linhas, contador e salvar. */
+
+.bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contador {
+  font-size: 13px;
+  color: var(--fraco);
+  font-variant-numeric: tabular-nums;
+}
+
+.contador-passou {
+  color: var(--risco);
+}
+
+.acoes {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pendente {
+  font-size: 14px;
+  color: var(--ambar);
+}
+
+.salvo {
+  font-size: 14px;
+  color: var(--ok);
+}

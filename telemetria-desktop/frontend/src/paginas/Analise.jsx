@@ -4,19 +4,18 @@
   O contraste e com /relatorios, que olha varias sessoes. Mexe aqui quem
   mudar como uma gravacao e apresentada.
 */
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useMemo } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
-import { dataHora, duracao, milhar, placa } from "../formato.js";
-import {
-  GraficoSessao,
-  marcasDeEvento,
-  serieDaSessao,
-} from "../componentes/telemetria/GraficoSessao.jsx";
+import { dataHora, duracao, milhar, formatarPlaca } from "../formato.js";
+import { serieDaSessao } from "../componentes/telemetria/GraficoSessao.jsx";
+import { AnaliseGraficos } from "../componentes/telemetria/AnaliseGraficos.jsx";
+import { aplicarEdicao, KmENotas } from "../componentes/telemetria/KmENotas.jsx";
 import { Metricas } from "../componentes/telemetria/Metricas.jsx";
 import { Download } from "lucide-react";
-import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Migalha } from "../componentes/ui/Migalha.jsx";
+import { FalhaDeCarga } from "../componentes/ui/FalhaDeCarga.jsx";
+import { useCarga } from "../componentes/ui/useCarga.js";
 import c from "../estilos/comum.module.css";
 import s from "./Analise.module.css";
 
@@ -25,47 +24,46 @@ import s from "./Analise.module.css";
   entraram: o firmware nao le sonda nem DTC.
 */
 
-// Um syncId por tela basta: os graficos que se sincronizam sao os desta.
-const SYNC = "analise-sessao";
-
 /** Uma sessao inteira: graficos sincronizados, eventos e metricas. */
 export function Analise() {
   const { id } = useParams();
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState("");
-
-  useEffect(() => {
-    setDados(null);
-    api
-      .lerSessao(id)
-      .then(setDados)
-      .catch((e) => setErro(String(e.message || e)));
-  }, [id]);
+  // `?evento=ID&t=SEGUNDOS`: a lista de eventos da tela da sessao manda
+  // para ca com o evento escolhido e o zoom no trecho dele. Link antigo, so
+  // com `t`: o evento mais perto daquele instante.
+  const [parametros] = useSearchParams();
+  const foco = useMemo(() => {
+    const numero = (nome) => {
+      const v = parametros.has(nome) ? Number(parametros.get(nome)) : NaN;
+      return Number.isFinite(v) ? v : null;
+    };
+    const evento = numero("evento");
+    const t = numero("t");
+    return evento === null && t === null ? null : { evento, t };
+  }, [parametros]);
+  // Id invalido e 404 viram "esta sessao nao existe"; falha de carga,
+  // "Tentar de novo" - o mesmo tratamento de toda tela com :id.
+  const { dados, setDados, falha, tentarDeNovo } = useCarga(id, api.lerSessao);
 
   /*
-    Uma serie so para os tres graficos: e o que faz o tooltip e o zoom de
-    um valerem nos outros.
+    Uma serie so para todos os graficos: o cursor e o zoom procuram o
+    instante nela, uma vez, e valem em todos. Depende so das amostras:
+    salvar km ou notas troca `dados`, e nao pode redesenhar os graficos.
   */
-  const serie = useMemo(
-    () => serieDaSessao(dados?.amostras, dados?.sessao?.iniciada_em),
-    [dados]
-  );
-  const marcas = useMemo(
-    () => marcasDeEvento(dados?.eventos, dados?.sessao?.iniciada_em),
-    [dados]
-  );
+  const amostras = dados?.amostras;
+  const iniciadaEm = dados?.sessao?.iniciada_em;
+  const serie = useMemo(() => serieDaSessao(amostras, iniciadaEm), [amostras, iniciadaEm]);
 
-  if (erro) return <Aviso>{erro}</Aviso>;
+  if (falha) return <FalhaDeCarga recurso="sessao" falha={falha} aoTentar={tentarDeNovo} />;
   if (!dados) return <p className={c.paginaVazia}>Carregando…</p>;
 
-  const { sessao, veiculo, resumo, eventos, metricas } = dados;
+  const { sessao, veiculo, resumo, eventos, metricas, limites, trechos } = dados;
 
   // Vermelho porque o backend registrou TEMP_ALTA nesta sessao, nao porque
   // a tela reavaliou o limite por conta propria.
   const aqueceu = eventos.some((e) => e.tipo === "TEMP_ALTA");
 
   const legenda = [
-    veiculo && `${veiculo.marca} ${veiculo.modelo}`,
+    veiculo?.descricao,
     duracao(resumo?.duracao_s),
     `${milhar(resumo?.amostras)} amostras`,
   ]
@@ -75,7 +73,7 @@ export function Analise() {
   return (
     <>
       <Migalha para={veiculo ? `/veiculos/${veiculo.id}` : "/sessoes"}>
-        {placa(veiculo?.placa) || "Sessões"}
+        {formatarPlaca(veiculo?.placa) || "Sessões"}
       </Migalha>
 
       <header className={c.painelTopo}>
@@ -114,42 +112,26 @@ export function Analise() {
       </div>
 
       {/*
-        syncId igual nos tres: passar o mouse em um mostra o tooltip nos
-        tres no mesmo instante da sessao, e o Brush do primeiro reenquadra
-        os outros dois. O Brush fica so no primeiro de proposito - tres
-        controles de zoom para uma escala de tempo so seriam tres jeitos de
-        dizer a mesma coisa.
+        Barra de leitura, grafico em destaque com as trilhas, minimapa e,
+        ao lado (ou embaixo, em tela estreita), eventos por tipo,
+        qualidade do dado e as notas: tudo na mesma janela de tempo.
       */}
-      <div className={s.graficos}>
-        <GraficoSessao
-          titulo="RPM"
-          campo="rpm"
-          dados={serie}
-          marcas={marcas}
-          syncId={SYNC}
-          classe={s.rpm}
-          brush
-        />
-        <GraficoSessao
-          titulo="Velocidade"
-          campo="vss"
-          unidade="km/h"
-          dados={serie}
-          marcas={marcas}
-          syncId={SYNC}
-          classe={s.vss}
-        />
-        <GraficoSessao
-          titulo="Temperatura do motor"
-          campo="ect"
-          unidade="°C"
-          dados={serie}
-          marcas={marcas}
-          syncId={SYNC}
-          classe={s.ect}
-          legenda
-        />
-      </div>
+      <AnaliseGraficos
+        serie={serie}
+        eventos={eventos}
+        inicio={sessao.iniciada_em}
+        limites={limites}
+        trechos={trechos}
+        foco={foco}
+        notas={
+          <KmENotas
+            sessao={sessao}
+            kmDoCarro={veiculo?.quilometragem ?? null}
+            maisRecente={dados.mais_recente}
+            aoSalvar={(resposta) => setDados((atual) => aplicarEdicao(atual, resposta))}
+          />
+        }
+      />
 
       {/*
         Metricas calculadas (servicos/metricas.py), nas quatro categorias

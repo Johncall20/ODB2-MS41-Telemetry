@@ -20,7 +20,13 @@ from ..repositorios import veiculos as repo_veiculos
 from ..servicos import exportador, metricas
 from ..servicos.gravador import MINIMO_AMOSTRAS
 from .auth import usuario_atual
-from .esquemas import InicioSessao, eventos_notaveis, veiculo_resumido
+from .esquemas import (
+    EdicaoSessao,
+    InicioSessao,
+    eventos_notaveis,
+    problema_nos_limites,
+    veiculo_resumido,
+)
 
 router = APIRouter(tags=["sessoes"])
 
@@ -54,7 +60,20 @@ def status(
         "limites": repo_limites.efetivos_da_sessao(sessao) if sessao else None,
         "amostras_na_sessao": gravador.total_amostras,
         "ultima": gravador.ultima,
+        # A gravacao desta conta que o servidor deixou no meio ao reiniciar
+        # e fechou ao subir: {sessao_id, descartada, amostras, minimo}. A
+        # tela avisa ate a pessoa dizer que viu (POST /api/status/ciente).
+        "interrompida": ctx.interrompida_de(usuario.id),
     }
+
+
+@router.post("/api/status/ciente", status_code=204)
+def ciente_da_interrupcao(
+    ctx: Contexto = Depends(obter_contexto),
+    usuario: Usuario = Depends(usuario_atual),
+):
+    """A pessoa viu o aviso da gravacao interrompida: ele nao volta."""
+    ctx.ciente(usuario.id)
 
 
 @router.get("/api/sessoes")
@@ -110,25 +129,70 @@ async def iniciar(
     ctx: Contexto = Depends(obter_contexto),
     usuario: Usuario = Depends(usuario_atual),
 ):
-    """Comeca a gravar para um veiculo. Uma sessao por vez."""
+    """Comeca a gravar para um veiculo. Uma sessao por vez.
+
+    Os seis limites vem no corpo e vao DIRETO para o snapshot da sessao:
+    sao os unicos limites que ela tera, sem edicao depois. A ordem entre
+    eles e conferida antes de tudo, com 422 por campo - e nenhuma sessao
+    nasce com limite invalido.
+    """
+    erros = problema_nos_limites(entrada.limites())
+    if erros:
+        primeiro = next(iter(erros.values()))
+        raise HTTPException(
+            422, {"erro": "validacao", "mensagem": primeiro, "campos": erros}
+        )
     if ctx.gravador.sessao_id is not None:
-        raise HTTPException(409, "ja existe uma sessao ativa")
+        raise HTTPException(409, "já existe uma sessão ativa")
     veiculo = repo_veiculos.buscar(entrada.veiculo_id, usuario.id, incluir_arquivados=True)
     if veiculo is None:
-        raise HTTPException(404, "veiculo nao encontrado")
+        raise HTTPException(404, "veículo não encontrado")
     # Arquivado nao recebe sessao nova: senao daria para criar justamente o
     # estado que a regra de arquivamento evita - carro fora das listas com
     # gravacao em curso. Por isso ele e buscado com incluir_arquivados e
     # recusado aqui, em vez de virar um 404 enganoso.
     if veiculo.arquivado_em is not None:
-        raise HTTPException(409, "este veiculo esta arquivado; restaure antes de gravar")
+        raise HTTPException(409, "este veículo está arquivado; restaure antes de gravar")
+    # O adaptador BLE so le a MS41: perfil conhecido e diferente e 409.
+    # Perfil nulo so avisa (no inicio-sessao), e o simulador grava tudo.
+    perfil = ctx.compatibilidade(veiculo.perfil_ecu)
+    if perfil and perfil["bloqueia"]:
+        raise HTTPException(409, {"erro": "perfil_incompativel", "mensagem": perfil["mensagem"]})
     sessao = ctx.gravador.iniciar_sessao(
-        entrada.veiculo_id, entrada.observacao, dono_id=usuario.id
+        entrada.veiculo_id,
+        entrada.limites(),
+        entrada.observacao,
+        dono_id=usuario.id,
+        km=entrada.km,
     )
     await ctx.hub.enviar(
         "sessao", {"id": sessao["id"], "status": "ATIVA"}, dono=usuario.id
     )
     return sessao
+
+
+@router.patch("/api/sessoes/{sessao_id}")
+def editar(sessao_id: int, entrada: EdicaoSessao, usuario: Usuario = Depends(usuario_atual)):
+    """Edita as notas e o km da sessao - e so isso, a qualquer momento.
+
+    Antes de encerrar (inclusive gravando) e depois. Campo fora desses
+    dois e 422 (`extra="forbid"`). O que nao veio no corpo nao muda.
+
+    Km numa sessao ENCERRADA e mais recente do carro passa tambem para a
+    quilometragem do carro; numa ATIVA, so quando ela encerrar; numa
+    antiga, nunca. `quilometragem_do_carro` devolve o valor do carro
+    depois disso, para a tela atualizar sem outra consulta.
+    """
+    sessao = repo_sessoes.buscar(sessao_id, usuario.id)
+    if sessao is None:
+        raise HTTPException(404, "sessão não encontrada")
+    editada = repo_sessoes.editar(sessao_id, entrada.campos())
+    veiculo = repo_veiculos.buscar(editada.veiculo_id, usuario.id, incluir_arquivados=True)
+    return {
+        "observacao": editada.observacao,
+        "km": editada.km,
+        "quilometragem_do_carro": veiculo.quilometragem if veiculo else None,
+    }
 
 
 @router.post("/api/sessoes/encerrar")
@@ -145,11 +209,11 @@ async def encerrar(
     # encerrar a gravacao alheia seria pior que nao ver.
     if ctx.gravador.sessao_id is not None:
         if repo_sessoes.buscar(ctx.gravador.sessao_id, usuario.id) is None:
-            raise HTTPException(409, "nenhuma sessao ativa")
+            raise HTTPException(409, "nenhuma sessão ativa")
 
     resultado = await ctx.gravador.encerrar_sessao()
     if resultado is None:
-        raise HTTPException(409, "nenhuma sessao ativa")
+        raise HTTPException(409, "nenhuma sessão ativa")
     if resultado["descartada"]:
         return {
             "descartada": True,
@@ -169,22 +233,31 @@ def detalhe(sessao_id: int, usuario: Usuario = Depends(usuario_atual)):
     """
     sessao = repo_sessoes.buscar(sessao_id, usuario.id)
     if sessao is None:
-        raise HTTPException(404, "sessao nao encontrada")
+        raise HTTPException(404, "sessão não encontrada")
     amostras = repo_amostras.listar(sessao_id)
     resumo = exportador.resumo(sessao_id)
+    limites = repo_limites.efetivos_da_sessao(sessao)
+    eventos = repo_sessoes.listar_eventos(sessao_id)
+    # Valor, pico e duracao de cada evento anomalo: o evento nao os guarda,
+    # e a serie que os responde ja esta carregada aqui.
+    detalhes = metricas.detalhar_eventos(amostras, eventos, limites)
     return {
         "sessao": sessao.model_dump(),
         "veiculo": veiculo_resumido(
             repo_veiculos.buscar(sessao.veiculo_id, usuario.id, incluir_arquivados=True)
         ),
+        # Se esta e a sessao mais recente do carro: e so nela que mudar o km
+        # mexe na quilometragem do carro, e por isso so nela a tela pede a
+        # confirmacao de km menor.
+        "mais_recente": repo_sessoes.e_a_mais_recente(sessao_id),
         "resumo": resumo,
         # O snapshot dos limites daquela gravacao. Sessao antiga, sem
         # snapshot, vem com do_snapshot=false e o padrao atual no lugar.
-        "limites": repo_limites.efetivos_da_sessao(sessao),
+        "limites": limites,
         # As metricas so saem aqui: esta e a unica rota que ja tem a serie
         # inteira carregada.
         "metricas": metricas.calcular(
-            amostras, resumo.get("duracao_s"), repo_limites.efetivos_da_sessao(sessao)
+            amostras, resumo.get("duracao_s"), limites
         ),
         # Cada amostra sai com o bitmask ja decodificado. Quem sabe que bit
         # e de qual campo e o backend (modelos.BITS_VALID); a tela de
@@ -192,7 +265,10 @@ def detalhe(sessao_id: int, usuario: Usuario = Depends(usuario_atual)):
         "amostras": [
             {**a.model_dump(), "invalidos": campos_invalidos(a.valid)} for a in amostras
         ],
-        "eventos": [e.model_dump() for e in repo_sessoes.listar_eventos(sessao_id)],
+        "eventos": [{**e.model_dump(), **detalhes.get(e.id, {})} for e in eventos],
+        # Onde a leitura falhou, como trecho (inicio e fim): a Analise
+        # sombreia. O fim nao esta em evento nenhum, entao sai da serie.
+        "trechos": metricas.trechos_sem_leitura(amostras, sessao.iniciada_em),
     }
 
 
@@ -203,7 +279,7 @@ def _exigir_sessao(sessao_id: int, usuario_id: int) -> None:
     so por `sessao_id`, sem filtrar por dono.
     """
     if repo_sessoes.buscar(sessao_id, usuario_id) is None:
-        raise HTTPException(404, "sessao nao encontrada")
+        raise HTTPException(404, "sessão não encontrada")
 
 
 @router.get("/api/sessoes/{sessao_id}/csv", response_class=PlainTextResponse)

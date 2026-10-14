@@ -1,27 +1,13 @@
 /*
-  Cores e tipografia do grafico da sessao, para o tema escuro.
+  Os desenhos da Analise (grafico em destaque e trilhas) e a miniatura da
+  exportacao, para o tema escuro.
 */
 
-.titulo {
-  font-size: 16px;
-  color: var(--texto);
-}
-
-.faixa {
-  font-size: 15px;
-  color: var(--apagado);
-  font-variant-numeric: tabular-nums;
-}
-
+/* A altura vem do componente (ALTURA_DESTAQUE). Relativo: a dica do ponto
+   de evento e posicionada dentro dele. */
 .desenho {
+  position: relative;
   width: 100%;
-  height: 168px;
-  margin-top: 10px;
-}
-
-/* O Brush ocupa altura propria abaixo do desenho. */
-.desenho-com-brush {
-  height: 210px;
 }
 
 /* --------------------------------------------------------------- eixos */
@@ -44,137 +30,140 @@
 /* --------------------------------------------------------------- serie */
 
 /*
-  A cor vem do `color` que a pagina poe no card (Analise.module.css), e o
-  Area a recebe por currentColor. Aqui so a transparencia da area, para a
-  linha continuar sendo o que se le.
+  A cor vem do `color` de quem poe o grafico na tela, e o Area a recebe
+  por currentColor. Aqui so a transparencia da area, para a linha
+  continuar sendo o que se le.
 */
 .serie :global(.recharts-area-area) {
   opacity: 0.12;
 }
 
-.cursor {
-  stroke: var(--apagado);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
+.trilha {
+  width: 100%;
 }
 
-/* ------------------------------------------------------ marca de evento */
-
-/* Tracejada, para nao ser confundida com a leitura. */
-.marca :global(.recharts-reference-line-line) {
-  stroke: var(--ambar);
-  stroke-width: 1;
-  opacity: 0.8;
+.trilha .serie :global(.recharts-area-area) {
+  opacity: 0.08;
 }
 
-.marca-grave :global(.recharts-reference-line-line) {
-  stroke: var(--risco);
-}
+/* ------------------------------------------------------ zona de limite */
 
-.marca-rotulo {
-  fill: var(--ambar);
-  font-size: 11px;
-}
-
-.marca-grave .marca-rotulo {
-  fill: var(--risco);
-}
-
-/* --------------------------------------------------------------- brush */
-
-.brush :global(.recharts-brush-slide) {
-  fill: var(--realce);
-  fill-opacity: 1;
-}
-
-.brush :global(.recharts-brush-traveller) rect {
-  fill: var(--apagado);
+/* Faixa tingida, atras da serie: acima do limite (ou abaixo, na tensao). */
+.zona :global(.recharts-reference-area-rect) {
   stroke: none;
 }
 
-.brush :global(.recharts-brush-traveller) line {
-  stroke: var(--fundo);
+.zona.alerta :global(.recharts-reference-area-rect) {
+  fill: var(--ambar);
+  fill-opacity: 0.07;
 }
 
-.brush > rect {
+.zona.risco :global(.recharts-reference-area-rect) {
+  fill: var(--risco);
+  fill-opacity: 0.09;
+}
+
+/* ------------------------------------------------- trecho sem leitura */
+
+/* Neutro e discreto: onde a central nao respondeu. */
+.trecho :global(.recharts-reference-area-rect) {
+  fill: var(--apagado);
+  fill-opacity: 0.1;
+  stroke: none;
+}
+
+.trecho-selecionado :global(.recharts-reference-area-rect) {
+  fill-opacity: 0.22;
+  stroke: var(--apagado);
+  stroke-opacity: 0.5;
+  stroke-dasharray: 3 3;
+}
+
+/* ------------------------------------------------------ ponto de evento */
+
+.risco {
+  color: var(--risco);
+}
+
+.alerta {
+  color: var(--ambar);
+}
+
+.neutro {
+  color: var(--apagado);
+}
+
+.ponto {
+  cursor: pointer;
+  outline: none;
+}
+
+/* Area de clique maior que o desenho. */
+.alvo {
+  fill: transparent;
+}
+
+.forma {
+  fill: currentColor;
+  stroke: var(--fundo-alto);
+  stroke-width: 1.5;
+}
+
+.forma-traco {
   fill: none;
-  stroke: var(--linha);
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
-.brush :global(.recharts-brush-texts) text {
-  fill: var(--fraco);
-  font-family: var(--fonte-mono);
-  font-size: 11px;
+.anel {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-opacity: 0.7;
+}
+
+.ponto:focus-visible .alvo {
+  stroke: var(--texto);
+  stroke-width: 1;
 }
 
 /* -------------------------------------------------------------- dica */
 
+/* Em cima do ponto; perto do topo, embaixo dele. */
 .dica {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, calc(-100% - 14px));
   display: grid;
   gap: 2px;
+  min-width: 160px;
+  max-width: 280px;
   padding: 10px 12px;
   border: 1px solid var(--linha);
   border-radius: 8px;
   background: var(--fundo);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
 }
 
-.dica-instante {
-  font-size: 12px;
-  color: var(--fraco);
-  font-variant-numeric: tabular-nums;
+.dica-abaixo {
+  transform: translate(-50%, 14px);
 }
 
-.dica-campo {
+.dica-titulo {
   font-size: 13px;
-  color: var(--apagado);
-}
-
-.dica-valor {
-  font-size: 16px;
+  font-weight: 500;
   color: var(--texto);
-  font-variant-numeric: tabular-nums;
 }
 
-/* Leitura que a central nao respondeu: apagada e nomeada, nunca um numero. */
-.dica-ausente {
-  font-size: 14px;
-  color: var(--fraco);
-}
-
-/* ------------------------------------------------------------- legenda */
-
-.legenda {
-  display: flex;
-  gap: 22px;
-  margin-top: 16px;
-}
-
-.legenda-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
+.dica-linha {
+  font-size: 12px;
   color: var(--apagado);
-}
-
-.legenda-linha {
-  width: 14px;
-  border-top: 1px dashed var(--ambar);
-}
-
-.legenda-linha.marca-grave {
-  border-top-color: var(--risco);
-}
-
-.vazio {
-  margin: 14px 0 0;
-  font-size: 16px;
-  color: var(--fraco);
 }
 
 /* Miniatura da previa de exportacao: so a linha, sem eixo nem interacao.
-   A cor vem do `color` de quem a coloca na tela, como no grafico grande. */
+   A cor vem do `color` de quem a coloca na tela. */
 .miniatura {
   width: 100%;
 }

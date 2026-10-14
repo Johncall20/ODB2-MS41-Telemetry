@@ -6,22 +6,19 @@ arquivar preenche `arquivado_em` e preserva as sessoes.
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import DateTime, Index, text
+from sqlalchemy import CheckConstraint, DateTime, Index, text
 from sqlmodel import Field, Relationship, SQLModel
 
+from ..normalizacao import normalizar_placa
+from .catalogo import Modelo, descrever
 from .comum import agora
+from .enums import Cambio, Combustivel, PerfilEcu
 
 if TYPE_CHECKING:
     from .sessao import Sessao
 
-
-def normalizar_placa(bruta: str) -> str:
-    """Placa como ela e guardada: maiuscula e sem separador.
-
-    "abc-1234", "ABC 1234" e "abc.1234" tem de dar a mesma linha. O hifen
-    volta so na exibicao.
-    """
-    return "".join(c for c in (bruta or "").upper() if c.isalnum())
+# Reexportado: `from .modelos import normalizar_placa` continua valendo.
+__all__ = ["Veiculo", "normalizar_placa"]
 
 
 class Veiculo(SQLModel, table=True):
@@ -49,21 +46,53 @@ class Veiculo(SQLModel, table=True):
             unique=True,
             postgresql_where=text("arquivado_em IS NULL"),
         ),
+        # Os CHECKs espelham a migration 0008, que e quem os cria. O teto do
+        # ano (o ano corrente) fica so no backend: CHECK com data atual
+        # mudaria de significado sozinho, de um ano para o outro.
+        CheckConstraint("ano_fabricacao >= 1950", name="ck_veiculo_ano_fabricacao_piso"),
+        CheckConstraint(
+            "ano_modelo = ano_fabricacao OR ano_modelo = ano_fabricacao + 1",
+            name="ck_veiculo_ano_modelo",
+        ),
+        CheckConstraint(
+            "placa IS NULL OR placa ~ '^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$'",
+            name="ck_veiculo_placa_formato",
+        ),
+        CheckConstraint(
+            "motor IS NULL OR (motor <> '' AND motor = btrim(motor))",
+            name="ck_veiculo_motor",
+        ),
+        CheckConstraint("quilometragem >= 0", name="ck_veiculo_quilometragem"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    marca: str
-    modelo: str
-    ano: int
-    placa: str
-    ecu: str = "MS41.1"
+    # Marca e modelo vem do catalogo: o carro aponta para um MODELO, e a
+    # marca sai dele. Modelo do catalogo (visivel a todos) ou customizado
+    # da propria conta - quem confere e `rotas/veiculos.py`.
+    modelo_id: int = Field(foreign_key="modelo.id", index=True)
+    # Fabricacao e modelo, como no documento do carro ("1996/1997"). O
+    # modelo e o da fabricacao ou o seguinte - o banco confere.
+    ano_modelo: int
+    ano_fabricacao: int
+    # Opcional: carro sem placa (antigo, de pista) grava NULL, nunca "".
+    # Com "" o indice unico tratava dois carros sem placa como repetidos.
+    placa: Optional[str] = None
 
     # Campos da tela de veiculo do Figma (node 2:295). Todos opcionais: o
     # carro do TCC e um so e conhecido, mas a tela e a mesma para a oficina
     # que cadastra um carro de cliente sabendo pouco dele.
-    motor: str = ""
-    protocolo: str = "DS2"
-    quilometragem: int = 0
+    motor: Optional[str] = None
+    # Nulo = nao informado. Zero e zero km: ate a migration 0011 o 0 fazia
+    # as duas vezes, e um carro novo nao tinha como se distinguir de um
+    # cadastro sem o campo.
+    quilometragem: Optional[int] = None
+
+    # Anulaveis no banco - carro cadastrado antes deles mostra "Nao
+    # informado" -, obrigatorios no formulario (`VeiculoEntrada`). Nao ha
+    # campo de protocolo: ele e consequencia do perfil da ECU.
+    combustivel: Optional[Combustivel] = None
+    cambio: Optional[Cambio] = None
+    perfil_ecu: Optional[PerfilEcu] = None
 
     # O dono, em dois campos que TEM DE CONCORDAR:
     # `veiculo.usuario_id == veiculo.cliente.usuario_id`.
@@ -88,3 +117,22 @@ class Veiculo(SQLModel, table=True):
     arquivado_em: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
 
     sessoes: List["Sessao"] = Relationship(back_populates="veiculo")
+
+    # selectin, e nao a carga preguicosa padrao: o objeto volta desanexado
+    # da Session, e o nome do carro aparece em toda tela. Com selectin o
+    # modelo (e a marca dele) chegam numa consulta a mais por SELECT de
+    # veiculo, nao uma por carro.
+    modelo: Optional[Modelo] = Relationship(sa_relationship_kwargs={"lazy": "selectin"})
+
+    @property
+    def nome_marca(self) -> str:
+        return self.modelo.marca.nome if self.modelo and self.modelo.marca else ""
+
+    @property
+    def nome_modelo(self) -> str:
+        return self.modelo.nome if self.modelo else ""
+
+    def descricao(self) -> str:
+        """O nome do carro como as telas, o PDF e o arquivo baixado
+        escrevem - sem o "Outra" na marca Outra (`catalogo.descrever`)."""
+        return descrever(self.nome_marca, self.nome_modelo)

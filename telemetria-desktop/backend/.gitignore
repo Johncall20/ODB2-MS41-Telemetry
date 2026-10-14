@@ -29,6 +29,7 @@ pip-wheel-metadata/
 .coverage.*
 htmlcov/
 coverage.xml
+testes/
 
 # --- Variaveis de ambiente / segredos ---
 .env
@@ -43,6 +44,12 @@ coverage.xml
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Estado de trabalho do gerar_catalogo.py: so existe durante uma coleta
+# e pode ser apagado quando ela termina (o resultado fica no
+# catalogo_veiculos.json, que continua versionado).
+catalogo_progresso.json
+catalogo_progresso.json.tmp
 
 # Logs
 *.log

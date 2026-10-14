@@ -13,7 +13,7 @@ from sqlalchemy import Float, case, func
 from sqlmodel import select
 
 from ..banco import sessao_db
-from ..modelos import Evento, Sessao, StatusSessao, Veiculo, agora
+from ..modelos import Evento, Marca, Modelo, Sessao, StatusSessao, Veiculo, agora, descrever
 from .sessoes import EVENTOS_DE_ROTINA, PERIODOS
 
 
@@ -171,16 +171,19 @@ def eventos_por_veiculo(usuario_id: Optional[int], periodo: str = "tudo") -> lis
         select(
             Veiculo.id,
             Veiculo.placa,
-            Veiculo.marca,
-            Veiculo.modelo,
+            Marca.nome,
+            Modelo.nome,
             Veiculo.arquivado_em,
             total.label("total"),
             func.count(func.distinct(Sessao.id)).label("sessoes"),
         )
         .join(Sessao, Sessao.veiculo_id == Veiculo.id)
         .join(Evento, Evento.sessao_id == Sessao.id)
+        # Os nomes vem do catalogo: o veiculo so guarda o modelo_id.
+        .join(Modelo, Modelo.id == Veiculo.modelo_id)
+        .join(Marca, Marca.id == Modelo.marca_id)
         .where(Evento.tipo.notin_(EVENTOS_DE_ROTINA))
-        .group_by(Veiculo.id)
+        .group_by(Veiculo.id, Marca.nome, Modelo.nome)
         .order_by(total.desc())
     )
     # Esta ja junta `Veiculo`, entao o recorte do dono vem por outro
@@ -197,6 +200,7 @@ def eventos_por_veiculo(usuario_id: Optional[int], periodo: str = "tudo") -> lis
                 "placa": placa,
                 "marca": marca,
                 "modelo": modelo,
+                "descricao": descrever(marca, modelo),
                 "arquivado_em": arquivado,
                 "total": total_,
                 "sessoes": sessoes,

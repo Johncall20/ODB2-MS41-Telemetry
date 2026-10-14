@@ -1,8 +1,12 @@
-"""Os limites de alerta de cada carro.
+"""Os limites de alerta, que sao da SESSAO.
 
-Nao ha limite global nem heranca: todo veiculo tem uma linha com os seis
-valores preenchidos. Por isso aqui nao existe mescla - o que esta gravado
-na linha e o que vale.
+Nao ha limite global nem limite do carro: os seis valores sao escolhidos
+ao iniciar a gravacao e ficam nas colunas `limite_*` da `Sessao`. Este
+modulo responde de onde partir (a ultima sessao do carro, ou os
+sugeridos) e o que valeu numa sessao gravada.
+
+So por `veiculo_id`, sem filtro de dono: quem chama ja conferiu a posse
+do carro (`rotas/veiculos.py`).
 
 Mexe aqui quem mudar como um limite chega ao detector ou as metricas.
 """
@@ -12,24 +16,9 @@ from typing import Optional
 from sqlmodel import select
 
 from ..banco import sessao_db
-from ..modelos import CAMPOS_LIMITE, LIMITES_SUGERIDOS, LimitesVeiculo, Sessao
+from ..modelos import CAMPOS_LIMITE, LIMITES_SUGERIDOS, Sessao
 
-
-def _solta(linha: LimitesVeiculo) -> LimitesVeiculo:
-    """Copia desanexada da linha.
-
-    Solta porque o objeto do ORM morre com a Session, e o detector leva
-    esses valores pela sessao inteira.
-    """
-    return LimitesVeiculo(
-        veiculo_id=linha.veiculo_id,
-        **{campo: getattr(linha, campo) for campo in CAMPOS_LIMITE},
-    )
-
-
-def como_dict(limites) -> dict:
-    """So os seis campos. E o formato que sai pelas rotas."""
-    return {campo: getattr(limites, campo) for campo in CAMPOS_LIMITE}
+_COLUNAS = [getattr(Sessao, f"limite_{campo}") for campo in CAMPOS_LIMITE]
 
 
 def sugeridos() -> dict:
@@ -37,56 +26,32 @@ def sugeridos() -> dict:
     return dict(LIMITES_SUGERIDOS)
 
 
-def nova_linha(veiculo_id: int) -> LimitesVeiculo:
-    """Linha de limites de um carro novo, com os sugeridos. Nao grava.
+def da_ultima_sessao(veiculo_id: int) -> Optional[dict]:
+    """Os limites da sessao mais recente do carro com snapshot, ou None.
 
-    Quem grava e `repositorios/veiculos.criar()`, na mesma transacao do
-    veiculo - e o que garante que nao exista carro sem limites nem por um
-    instante.
-    """
-    return LimitesVeiculo(veiculo_id=veiculo_id, **LIMITES_SUGERIDOS)
+    "Mais recente" e por `iniciada_em`, em qualquer status e de qualquer
+    idade - o que vale e ser a ultima gravacao com os seis valores. Sessao
+    com snapshot nulo (gravada antes das colunas existirem) nao conta: os
+    valores dela seriam os sugeridos, um palpite, e nao uma escolha.
+    Sessao descartada por ser curta demais tambem nao, porque nao existe
+    mais.
 
-
-def _buscar(db, veiculo_id: int) -> Optional[LimitesVeiculo]:
-    return db.exec(
-        select(LimitesVeiculo).where(LimitesVeiculo.veiculo_id == veiculo_id)
-    ).first()
-
-
-def do_veiculo(veiculo_id: int) -> dict:
-    """Os seis limites do carro.
-
-    Carro sem linha nao deveria existir - `repositorios/veiculos.criar()`
-    grava uma na mesma transacao, e a migration de dados cobre o resto -,
-    mas se aparecer, os sugeridos respondem em vez de estourar: a tela de
-    limites e justamente onde isso se conserta.
+    Devolve os seis campos mais `sessao_id` e `iniciada_em`, para a tela
+    dizer de qual gravacao eles vieram.
     """
     with sessao_db() as db:
-        linha = _buscar(db, veiculo_id)
-        return como_dict(linha) if linha is not None else sugeridos()
-
-
-def gravar_do_veiculo(veiculo_id: int, valores: dict) -> dict:
-    """Grava os seis limites do carro. Cria a linha se ela faltar."""
-    with sessao_db() as db:
-        linha = _buscar(db, veiculo_id)
-        if linha is None:
-            linha = LimitesVeiculo(veiculo_id=veiculo_id)
-        for campo in CAMPOS_LIMITE:
-            setattr(linha, campo, valores[campo])
-        db.add(linha)
-        db.commit()
-        db.refresh(linha)
-        return como_dict(linha)
-
-
-def efetivos_do_veiculo(veiculo_id: int) -> LimitesVeiculo:
-    """O que o carro usa - o que o gravador leva para o detector."""
-    with sessao_db() as db:
-        linha = _buscar(db, veiculo_id)
-        if linha is None:
-            return LimitesVeiculo(veiculo_id=veiculo_id, **LIMITES_SUGERIDOS)
-        return _solta(linha)
+        sessao = db.exec(
+            select(Sessao)
+            .where(Sessao.veiculo_id == veiculo_id, *[c.is_not(None) for c in _COLUNAS])
+            .order_by(Sessao.iniciada_em.desc(), Sessao.id.desc())
+        ).first()
+    if sessao is None:
+        return None
+    return {
+        **{campo: getattr(sessao, f"limite_{campo}") for campo in CAMPOS_LIMITE},
+        "sessao_id": sessao.id,
+        "iniciada_em": sessao.iniciada_em,
+    }
 
 
 def efetivos_da_sessao(sessao: Sessao) -> dict:
@@ -108,6 +73,6 @@ def efetivos_da_sessao(sessao: Sessao) -> dict:
     }
 
 
-def para_snapshot(limites) -> dict:
+def para_snapshot(limites: dict) -> dict:
     """Os seis campos com o prefixo `limite_`, como a Sessao os guarda."""
-    return {f"limite_{campo}": getattr(limites, campo) for campo in CAMPOS_LIMITE}
+    return {f"limite_{campo}": limites[campo] for campo in CAMPOS_LIMITE}

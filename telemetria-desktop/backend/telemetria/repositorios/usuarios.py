@@ -15,7 +15,7 @@ from ..modelos import (
     Amostra,
     Cliente,
     Evento,
-    LimitesVeiculo,
+    Modelo,
     Sessao,
     TokenAcesso,
     Usuario,
@@ -158,8 +158,10 @@ def excluir(usuario_id: int) -> dict:
         ("evento", delete(Evento).where(Evento.sessao_id.in_(sessoes))),
         ("amostra", delete(Amostra).where(Amostra.sessao_id.in_(sessoes))),
         ("sessao", delete(Sessao).where(Sessao.veiculo_id.in_(veiculos))),
-        ("limitesveiculo", delete(LimitesVeiculo).where(LimitesVeiculo.veiculo_id.in_(veiculos))),
         ("veiculo", delete(Veiculo).where(Veiculo.usuario_id == usuario_id)),
+        # Os modelos customizados da conta, DEPOIS dos veiculos que apontam
+        # para eles. O catalogo (usuario_id nulo) nao e de ninguem e fica.
+        ("modelo", delete(Modelo).where(Modelo.usuario_id == usuario_id)),
         ("cliente", delete(Cliente).where(Cliente.usuario_id == usuario_id)),
         ("tokenacesso", delete(TokenAcesso).where(TokenAcesso.usuario_id == usuario_id)),
         ("usuario", delete(Usuario).where(Usuario.id == usuario_id)),

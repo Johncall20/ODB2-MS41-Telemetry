@@ -18,7 +18,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../api.js";
-import { ROTULO_EVENTO, dataHora, duracao, milhar, paraData, placa } from "../formato.js";
+import { ROTULO_EVENTO, dataHora, duracao, milhar, paraData, formatarPlaca } from "../formato.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Chip } from "../componentes/ui/Chip.jsx";
 import { FiltroPopover } from "../componentes/ui/FiltroPopover.jsx";
@@ -133,6 +133,8 @@ function GraficoEvolucao({ dados, campo, titulo, unidade, classe }) {
 export function Relatorios() {
   const { filtro, aplicar } = useFiltrosUrl(PADROES);
   const [veiculos, setVeiculos] = useState([]);
+  // Falha so do seletor de veiculo: aviso em cima, sem derrubar a tela.
+  const [erroVeiculos, setErroVeiculos] = useState("");
   const [frota, setFrota] = useState(null);
   const [evolucao, setEvolucao] = useState(null);
   const [eventos, setEventos] = useState(null);
@@ -143,7 +145,7 @@ export function Relatorios() {
     api
       .listarVeiculos({ incluir_arquivados: true })
       .then(setVeiculos)
-      .catch(() => {});
+      .catch((falha) => setErroVeiculos(falha.message));
   }, []);
 
   useEffect(() => {
@@ -193,6 +195,9 @@ export function Relatorios() {
 
   return (
     <>
+      {erroVeiculos && (
+        <Aviso>Não foi possível carregar a lista de veículos: {erroVeiculos}</Aviso>
+      )}
       <header className={c.paginaTopo}>
         <div>
           <h1 className={c.paginaTitulo}>Relatórios</h1>
@@ -219,7 +224,7 @@ export function Relatorios() {
             <option value="">Toda a frota</option>
             {veiculos.map((v) => (
               <option key={v.id} value={String(v.id)}>
-                {placa(v.placa) || `${v.marca} ${v.modelo}`}
+                {formatarPlaca(v.placa) || v.descricao}
                 {v.arquivado_em ? " (arquivado)" : ""}
               </option>
             ))}
@@ -245,7 +250,7 @@ export function Relatorios() {
         </p>
       ) : serieEvolucao.length === 0 ? (
         <p className={s.aviso}>
-          {placa(carro?.placa) || "Este veículo"} não tem sessão encerrada neste período.
+          {formatarPlaca(carro?.placa) || "Este veículo"} não tem sessão encerrada neste período.
         </p>
       ) : (
         <div className={s.graficos}>
@@ -323,7 +328,7 @@ export function Relatorios() {
                   <td>
                     <span className={c.placaLinha}>
                       <Link className={s.link} to={`/veiculos/${v.veiculo_id}`}>
-                        {placa(v.placa) || `${v.marca} ${v.modelo}`}
+                        {formatarPlaca(v.placa) || v.descricao}
                       </Link>
                       {v.arquivado_em && <Chip>arquivado</Chip>}
                     </span>
@@ -346,7 +351,7 @@ export function Relatorios() {
         </p>
       ) : serieEvolucao.length < 2 ? (
         <p className={s.aviso}>
-          {placa(carro?.placa) || "Este veículo"} precisa de pelo menos duas sessões
+          {formatarPlaca(carro?.placa) || "Este veículo"} precisa de pelo menos duas sessões
           encerradas neste período para haver o que comparar.
         </p>
       ) : (

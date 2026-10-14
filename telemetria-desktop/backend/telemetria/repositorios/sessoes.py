@@ -184,7 +184,10 @@ def listar(usuario_id: Optional[int], veiculo_id: Optional[int] = None) -> list[
 
 
 def criar(
-    veiculo_id: int, observacao: str = "", snapshot: Optional[dict] = None
+    veiculo_id: int,
+    observacao: Optional[str] = None,
+    snapshot: Optional[dict] = None,
+    km: Optional[int] = None,
 ) -> Sessao:
     """Abre a sessao e registra o evento de inicio.
 
@@ -194,9 +197,15 @@ def criar(
     `snapshot` sao as colunas `limite_*` ja resolvidas - quem busca o
     efetivo do carro e o gravador, para a decisao de qual limite vale
     ficar num lugar so.
+
+    `km` fica SO na sessao: a quilometragem do carro nao e tocada aqui. Ela
+    so recebe o km quando a sessao for encerrada (`encerrar()`), e por isso
+    uma sessao descartada por curta demais nunca chega a mexer no carro.
     """
     with sessao_db() as db:
-        sessao = Sessao(veiculo_id=veiculo_id, observacao=observacao, **(snapshot or {}))
+        sessao = Sessao(
+            veiculo_id=veiculo_id, observacao=observacao, km=km, **(snapshot or {})
+        )
         db.add(sessao)
         db.commit()
         db.refresh(sessao)
@@ -204,7 +213,7 @@ def criar(
             Evento(
                 sessao_id=sessao.id,
                 tipo=TipoEvento.INICIO_SESSAO,
-                mensagem="gravacao iniciada",
+                mensagem="gravação iniciada",
             )
         )
         db.commit()
@@ -212,26 +221,119 @@ def criar(
         return sessao
 
 
-def encerrar(sessao_id: int, agregados: Optional[dict] = None) -> None:
+def _e_a_mais_recente(db, sessao: Sessao) -> bool:
+    """Nenhuma outra sessao do carro comecou depois desta.
+
+    Empate de `iniciada_em` desempata pelo id, como a ordem das listas.
+    """
+    depois = db.exec(
+        select(func.count(Sessao.id)).where(
+            Sessao.veiculo_id == sessao.veiculo_id,
+            Sessao.id != sessao.id,
+            or_(
+                Sessao.iniciada_em > sessao.iniciada_em,
+                (Sessao.iniciada_em == sessao.iniciada_em) & (Sessao.id > sessao.id),
+            ),
+        )
+    ).one()
+    return depois == 0
+
+
+def _levar_km_ao_carro(db, sessao: Sessao) -> bool:
+    """Copia o km da sessao para `veiculo.quilometragem`, se for o caso.
+
+    Tres condicoes, todas necessarias:
+
+    - a sessao tem km (nulo nao apaga o do carro);
+    - esta ENCERRADA - ATIVA ainda pode ser descartada por curta demais, e
+      o carro ficaria com o km de uma gravacao que nao existe;
+    - e a mais recente do carro - corrigir o km de uma sessao antiga nao
+      volta o painel do carro para tras.
+
+    Km menor que o atual do carro e aceito (troca de painel, correcao): o
+    aviso e da tela. Roda na Session de quem chama, entao entra na mesma
+    transacao. Devolve se atualizou.
+    """
+    if sessao.km is None or sessao.status != StatusSessao.ENCERRADA:
+        return False
+    if not _e_a_mais_recente(db, sessao):
+        return False
+    veiculo = db.get(Veiculo, sessao.veiculo_id)
+    if veiculo is None:
+        return False
+    veiculo.quilometragem = sessao.km
+    db.add(veiculo)
+    return True
+
+
+def e_a_mais_recente(sessao_id: int) -> bool:
+    """Se a sessao e a mais recente do carro - a que, com km, mexe na
+    quilometragem dele. A tela de sessao usa para decidir se pede a
+    confirmacao de km menor."""
+    with sessao_db() as db:
+        sessao = db.get(Sessao, sessao_id)
+        return sessao is not None and _e_a_mais_recente(db, sessao)
+
+
+def editar(sessao_id: int, campos: dict) -> Optional[Sessao]:
+    """Grava notas e/ou km de uma sessao, em qualquer status.
+
+    So por id: a rota ja conferiu a posse. `campos` traz so o que veio no
+    corpo (o que nao veio nao muda). Mudar o km de uma sessao ENCERRADA e
+    mais recente leva o valor ao carro na mesma transacao; ATIVA, so na
+    sessao - o carro recebe no `encerrar()`.
+    """
+    with sessao_db() as db:
+        sessao = db.get(Sessao, sessao_id)
+        if sessao is None:
+            return None
+        for campo in ("observacao", "km"):
+            if campo in campos:
+                setattr(sessao, campo, campos[campo])
+        db.add(sessao)
+        if "km" in campos:
+            _levar_km_ao_carro(db, sessao)
+        db.commit()
+        db.refresh(sessao)
+        return sessao
+
+
+def encerrar(
+    sessao_id: int,
+    agregados: Optional[dict] = None,
+    quando: Optional[datetime] = None,
+    mensagem: str = "gravação encerrada",
+) -> None:
     """Fecha a sessao, grava os agregados e registra o evento de fim.
+
+    `quando` e `mensagem` sao da sessao interrompida (servidor reiniciado
+    no meio da gravacao): ela fecha na hora da ultima amostra, e o evento
+    de fim diz o motivo. No encerramento normal, agora e "gravação
+    encerrada".
 
     Status e agregados na MESMA transacao: em dois commits haveria uma
     janela com a sessao encerrada e sem agregado, e a tela mostraria zero.
+    O km da sessao vai para o carro tambem aqui, na mesma transacao - e o
+    unico momento em que uma sessao recem-gravada mexe no carro, porque a
+    descartada nunca chega ao `encerrar()`.
     """
     with sessao_db() as db:
         sessao = db.get(Sessao, sessao_id)
         if sessao is None:
             return
         sessao.status = StatusSessao.ENCERRADA
-        sessao.encerrada_em = agora()
+        # Nunca antes do inicio (o CHECK do banco recusaria).
+        sessao.encerrada_em = max(quando, sessao.iniciada_em) if quando else agora()
         for campo, valor in (agregados or {}).items():
             setattr(sessao, campo, valor)
         db.add(sessao)
+        _levar_km_ao_carro(db, sessao)
         db.add(
             Evento(
                 sessao_id=sessao_id,
                 tipo=TipoEvento.FIM_SESSAO,
-                mensagem="gravacao encerrada",
+                mensagem=mensagem,
+                criado_em=sessao.encerrada_em,
             )
         )
         db.commit()
@@ -302,6 +404,24 @@ def ids_sem_agregados() -> list[int]:
                     Sessao.status == StatusSessao.ENCERRADA,
                     Sessao.total_amostras == None,  # noqa: E711
                 )
+                .order_by(Sessao.id)
+            )
+        )
+
+
+def ativas() -> list[tuple[int, int]]:
+    """As sessoes ATIVA no banco, com o dono do carro: (sessao_id, usuario_id).
+
+    So o `encerrar_orfas()` usa, ao subir o processo - nessa hora o
+    gravador ainda nao abriu sessao nenhuma, entao toda ATIVA e de uma
+    gravacao que o processo anterior deixou no meio.
+    """
+    with sessao_db() as db:
+        return list(
+            db.exec(
+                select(Sessao.id, Veiculo.usuario_id)
+                .join(Veiculo, Veiculo.id == Sessao.veiculo_id)
+                .where(Sessao.status == StatusSessao.ATIVA)
                 .order_by(Sessao.id)
             )
         )

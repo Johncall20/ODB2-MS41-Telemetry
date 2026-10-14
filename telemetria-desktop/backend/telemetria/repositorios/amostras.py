@@ -3,6 +3,9 @@ Gravacao e leitura das amostras. Escreve em lote, para o disco nao entrar
 no ciclo de leitura, e agrega em SQL, para nao trazer a serie a memoria.
 """
 
+from datetime import datetime
+from typing import Optional
+
 from sqlalchemy import case, func
 from sqlmodel import select
 
@@ -57,6 +60,18 @@ def agregados(sessao_id: int) -> dict:
         "ect_pico": ect,
         "vbat_min": vbat,
     }
+
+
+def ultimo_instante(sessao_id: int) -> Optional[datetime]:
+    """A hora da ultima amostra gravada da sessao, ou None sem nenhuma.
+
+    E onde a sessao interrompida e encerrada: a hora do reinicio do
+    servidor nao diria nada sobre a gravacao.
+    """
+    with sessao_db() as db:
+        return db.exec(
+            select(func.max(Amostra.recebida_em)).where(Amostra.sessao_id == sessao_id)
+        ).one()
 
 
 def listar(sessao_id: int) -> list[Amostra]:

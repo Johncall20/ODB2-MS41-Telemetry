@@ -1,0 +1,498 @@
+/*
+  A Analise montada: duas colunas (graficos e painel), a barra de leitura,
+  o card do grafico com as trilhas, a camada do cursor e o minimapa.
+*/
+
+/* A cor de cada sinal: o Area a recebe por currentColor. */
+.rpm {
+  color: var(--ambar);
+}
+
+.vss {
+  color: var(--apagado);
+}
+
+.ect {
+  color: var(--risco);
+}
+
+.vbat {
+  color: var(--ok);
+}
+
+.risco {
+  color: var(--risco);
+}
+
+.alerta {
+  color: var(--ambar);
+}
+
+/* ------------------------------------------------------------- colunas */
+
+/*
+  O ponto de quebra e a largura DA ANALISE, nao da janela (container
+  query): com o painel ao lado, a coluna do grafico precisa de uns 760 px
+  para o desenho continuar legivel. Abaixo de 1080 px de conteudo - janela
+  de cerca de 1500 px, com a sidebar - o painel desce.
+*/
+.analise {
+  container: analise / inline-size;
+  margin-top: 24px;
+}
+
+.colunas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+.principal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.painel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@container analise (max-width: 1079px) {
+  .colunas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Embaixo, os blocos lado a lado enquanto couberem. */
+  .painel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    align-items: start;
+  }
+}
+
+/* ---------------------------------------------------- barra de leitura */
+
+/* Presa no topo da area que rola: a leitura do instante e o uso principal
+   da tela, e nao pode sumir quando se desce ate o minimapa. */
+.leitura {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  padding: 12px 18px;
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  background: var(--fundo-alto);
+  box-shadow: 0 8px 18px -12px rgba(0, 0, 0, 0.8);
+}
+
+.leitura-instante {
+  min-width: 64px;
+  font-size: 17px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.leitura-valores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+
+.leitura-valor {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 15px;
+  color: var(--apagado);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.leitura-destaque {
+  color: var(--texto);
+}
+
+.leitura-delta {
+  color: var(--texto);
+}
+
+.leitura-dica {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--fraco);
+}
+
+/* Leitura que a central nao respondeu: apagada e nomeada, nunca numero. */
+.sem-resposta {
+  font-size: 13px;
+  color: var(--fraco);
+}
+
+.pontinho {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+  flex: none;
+}
+
+/* As letras do A e do B, na barra e na camada. */
+.marca-a,
+.marca-b {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.marca-a {
+  background: var(--texto);
+  color: var(--fundo);
+}
+
+.marca-b {
+  border: 1px solid var(--apagado);
+  color: var(--texto);
+}
+
+/* -------------------------------------------------------- card grafico */
+
+.card-grafico {
+  gap: 12px;
+}
+
+.cabecalho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+}
+
+/* O seletor do sinal: um grupo de botoes, o escolhido aceso. Rola na
+   horizontal se a largura nao der. */
+.seletor {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--linha);
+  border-radius: 9px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.seletor-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--apagado);
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seletor-item:hover {
+  color: var(--texto);
+}
+
+.seletor-ativo {
+  background: var(--chip-neutro);
+  color: var(--texto);
+}
+
+.legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+.legenda-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.legenda-cor {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.zona-alerta {
+  background: rgba(255, 138, 31, 0.35);
+}
+
+.zona-risco {
+  background: rgba(226, 72, 63, 0.4);
+}
+
+/* O resumo do evento (ou trecho) escolhido, sempre a vista. */
+.selecao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 8px;
+  background: var(--realce);
+  border: 1px solid var(--linha);
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+.selecao-titulo {
+  font-weight: 500;
+  color: var(--texto);
+}
+
+.selecao-nota {
+  color: var(--fraco);
+}
+
+.selecao-fechar {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--apagado);
+  cursor: pointer;
+}
+
+.selecao-fechar:hover {
+  color: var(--texto);
+  background: var(--chip-neutro);
+}
+
+/* ---------------------------------------------------- grafico e trilhas */
+
+/* Relativa: a camada do cursor cobre o grafico grande e as trilhas. */
+.pilha {
+  position: relative;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.sem-leitura {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 15px;
+  color: var(--fraco);
+}
+
+.trilhas {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  border-top: 1px solid var(--linha);
+}
+
+.trilha-linha {
+  display: grid;
+  align-items: center;
+  border-bottom: 1px solid var(--linha);
+}
+
+/* O nome promove a trilha a destaque. */
+.trilha-nome {
+  justify-self: start;
+  padding: 4px 8px 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--apagado);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trilha-nome:hover {
+  color: var(--texto);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.trilha-valor {
+  padding-left: 10px;
+  font-size: 13px;
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- camada */
+
+.camada {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.linha {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--apagado);
+}
+
+.linha-fixada {
+  border-left: 1px solid var(--texto);
+}
+
+.etiqueta {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  transform: translateX(-50%);
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--texto);
+  color: var(--fundo);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.etiqueta-b {
+  border: 1px solid var(--apagado);
+  background: var(--fundo-alto);
+  color: var(--texto);
+}
+
+.faixa-ab {
+  position: absolute;
+  background: var(--texto);
+  opacity: 0.05;
+}
+
+.cursor-ponto {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--fundo-alto);
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  box-sizing: content-box;
+}
+
+.valor-calha {
+  position: absolute;
+  transform: translateY(-50%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--fundo);
+  border: 1px solid var(--linha);
+  font-size: 12px;
+  color: var(--texto);
+  white-space: nowrap;
+}
+
+.fora-da-janela {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 12px;
+  color: var(--fraco);
+}
+
+/* -------------------------------------------------------------- minimapa */
+
+.minimapa-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 4px;
+}
+
+.minimapa-rotulo {
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+.minimapa-desenho {
+  position: relative;
+}
+
+/* Os eventos do motor, como tracinhos sobre o Brush. */
+.tracos {
+  position: absolute;
+  top: 0;
+  height: 10px;
+  pointer-events: none;
+}
+
+.traco {
+  position: absolute;
+  top: 1px;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.panorama {
+  color: var(--ambar);
+}
+
+.panorama :global(.recharts-area-area) {
+  opacity: 0.15;
+}
+
+.panorama :global(.recharts-area-curve) {
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.brush :global(.recharts-brush-slide) {
+  fill: var(--realce);
+  fill-opacity: 1;
+}
+
+.brush :global(.recharts-brush-traveller) rect {
+  fill: var(--apagado);
+  stroke: none;
+}
+
+.brush :global(.recharts-brush-traveller) line {
+  stroke: var(--fundo);
+}
+
+.brush > rect {
+  fill: none;
+  stroke: var(--linha);
+}
+
+.brush :global(.recharts-brush-texts) text {
+  fill: var(--fraco);
+  font-family: var(--fonte-mono);
+  font-size: 11px;
+}

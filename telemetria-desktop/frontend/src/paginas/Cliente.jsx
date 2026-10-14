@@ -16,8 +16,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
 import { api } from "../api.js";
-import { haQuantoTempo, placa } from "../formato.js";
+import { anoVeiculo, haQuantoTempo, formatarPlaca } from "../formato.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
+import { FalhaDeCarga } from "../componentes/ui/FalhaDeCarga.jsx";
+import { idValido, useCarga } from "../componentes/ui/useCarga.js";
 import { Chip } from "../componentes/ui/Chip.jsx";
 import { FiltroPopover } from "../componentes/ui/FiltroPopover.jsx";
 import { Migalha } from "../componentes/ui/Migalha.jsx";
@@ -43,23 +45,25 @@ export function Cliente() {
   const { filtro, aplicar } = useFiltrosUrl(PADROES);
   const comArquivados = filtro.carros === "todos";
 
-  const [cliente, setCliente] = useState(null);
+  // Erro de carregar o cliente troca a pagina pela falha; o da lista de
+  // carros fica no lugar da lista; erro de acao (o 409 de arquivar)
+  // aparece em cima da ficha, que continua a vista.
+  const {
+    dados: cliente,
+    falha,
+    tentarDeNovo,
+    recarregar: recarregarCliente,
+  } = useCarga(id, api.lerCliente);
   const [veiculos, setVeiculos] = useState(null);
-  // Erro de carregar troca a pagina pelo aviso; erro de acao (o 409 de
-  // arquivar) aparece em cima da ficha, que continua a vista.
-  const [erro, setErro] = useState("");
+  const [erroVeiculos, setErroVeiculos] = useState("");
   const [erroAcao, setErroAcao] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
 
-  const carregarCliente = useCallback(() => {
-    api
-      .lerCliente(id)
-      .then(setCliente)
-      .catch((e) => setErro(String(e.message || e)));
-  }, [id]);
-
   const carregarVeiculos = useCallback(() => {
+    // Id que nao e de cliente nenhum: a pagina ja mostra a falha.
+    if (!idValido(id)) return;
+    setErroVeiculos("");
     api
       .listarVeiculos({
         cliente_id: id,
@@ -68,10 +72,9 @@ export function Cliente() {
         direcao: "asc",
       })
       .then(setVeiculos)
-      .catch((e) => setErro(String(e.message || e)));
+      .catch((e) => setErroVeiculos(String(e.message || e)));
   }, [id, comArquivados]);
 
-  useEffect(carregarCliente, [carregarCliente]);
   useEffect(carregarVeiculos, [carregarVeiculos]);
 
   async function acao(fazer) {
@@ -79,7 +82,7 @@ export function Cliente() {
     setOcupado(true);
     try {
       await fazer();
-      carregarCliente();
+      await recarregarCliente();
       carregarVeiculos();
     } catch (falha) {
       setErroAcao(String(falha.message || falha));
@@ -89,7 +92,7 @@ export function Cliente() {
     }
   }
 
-  if (erro) return <Aviso>{erro}</Aviso>;
+  if (falha) return <FalhaDeCarga recurso="cliente" falha={falha} aoTentar={tentarDeNovo} />;
   if (!cliente) return <p className={c.paginaVazia}>Carregando…</p>;
 
   const arquivado = Boolean(cliente.arquivado_em);
@@ -187,7 +190,9 @@ export function Cliente() {
         />
       </div>
 
-      {veiculos === null ? (
+      {erroVeiculos ? (
+        <Aviso>Não foi possível carregar os veículos deste cliente: {erroVeiculos}</Aviso>
+      ) : veiculos === null ? (
         <p className={c.paginaVazia}>Carregando…</p>
       ) : veiculos.length === 0 ? (
         <p className={c.paginaVazia}>
@@ -215,16 +220,16 @@ export function Cliente() {
               >
                 <td>
                   <span className={c.placaLinha}>
-                    <span className={c.mono}>{placa(v.placa) || "—"}</span>
+                    <span className={c.mono}>{formatarPlaca(v.placa) || "—"}</span>
                     {v.arquivado_em && <Chip>arquivado</Chip>}
                   </span>
                 </td>
                 <td>
                   <span className={c.celulaForte}>
-                    {v.marca} {v.modelo}
+                    {v.descricao}
                   </span>
                   <span className={c.celulaFraca}>
-                    {[v.ano, v.motor].filter(Boolean).join(" · ")}
+                    {[anoVeiculo(v), v.motor].filter(Boolean).join(" · ")}
                   </span>
                 </td>
                 <td className={v.ultima_sessao ? c.celulaApagada : c.celulaNula}>

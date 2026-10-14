@@ -1,0 +1,43 @@
+/*
+  A tela de "Algo deu errado": dentro do conteudo do Shell, ou a pagina
+  inteira (`inteira`) quando o erro e fora dele.
+*/
+
+.caixa {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 640px;
+  margin: 40px 0 0;
+  padding: 32px;
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  background: var(--fundo-alto);
+}
+
+/* Sem Shell em volta: centralizada na janela. */
+.inteira {
+  margin: 15vh auto 0;
+}
+
+.titulo {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--texto);
+}
+
+.texto {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--apagado);
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}

@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { api } from "../api.js";
-import { ROTULO_EVENTO, dataHora, duracao, milhar, placa } from "../formato.js";
+import { ROTULO_EVENTO, dataHora, duracao, milhar, formatarPlaca } from "../formato.js";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
 import { Chip, Chips } from "../componentes/ui/Chip.jsx";
 import { Seta } from "../componentes/ui/Seta.jsx";
@@ -85,6 +85,8 @@ export function Sessoes() {
   const { filtro, aplicar, alternar, remover, limpar } = useFiltrosUrl(PADROES);
   const [sessoes, setSessoes] = useState(null);
   const [veiculos, setVeiculos] = useState([]);
+  // Falha so do seletor de veiculo: aviso em cima, sem derrubar a tela.
+  const [erroVeiculos, setErroVeiculos] = useState("");
   const [erro, setErro] = useState("");
 
   const personalizado = filtro.periodo === "personalizado";
@@ -96,7 +98,7 @@ export function Sessoes() {
     api
       .listarVeiculos({ incluir_arquivados: true })
       .then(setVeiculos)
-      .catch(() => {});
+      .catch((falha) => setErroVeiculos(falha.message));
   }, []);
 
   useEffect(() => {
@@ -155,7 +157,7 @@ export function Sessoes() {
   if (filtro.veiculo_id) {
     ativos.push({
       chave: "veiculo_id",
-      rotulo: carro ? placa(carro.placa) || carro.modelo : "veículo",
+      rotulo: carro ? formatarPlaca(carro.placa) || carro.modelo : "veículo",
     });
   }
   if (personalizado && (filtro.data_inicio || filtro.data_fim)) {
@@ -189,6 +191,9 @@ export function Sessoes() {
 
   return (
     <>
+      {erroVeiculos && (
+        <Aviso>Não foi possível carregar a lista de veículos: {erroVeiculos}</Aviso>
+      )}
       <header className={c.paginaTopo}>
         <div>
           <h1 className={c.paginaTitulo}>Sessões</h1>
@@ -253,7 +258,7 @@ export function Sessoes() {
             <option value="">Todos os veículos</option>
             {veiculos.map((v) => (
               <option key={v.id} value={String(v.id)}>
-                {placa(v.placa) || `${v.marca} ${v.modelo}`}
+                {formatarPlaca(v.placa) || v.descricao}
                 {v.arquivado_em ? " (arquivado)" : ""}
               </option>
             ))}
@@ -334,13 +339,13 @@ export function Sessoes() {
                 <td>
                   <span className={c.placaLinha}>
                     <span className={`${s.placa} ${c.mono}`}>
-                      {placa(sessao.veiculo?.placa) || "sem placa"}
+                      {formatarPlaca(sessao.veiculo?.placa) || "sem placa"}
                     </span>
                     {sessao.veiculo?.arquivado_em && <Chip>arquivado</Chip>}
                   </span>
                   <span className={c.celulaFraca}>
                     {sessao.veiculo
-                      ? `${sessao.veiculo.marca} ${sessao.veiculo.modelo}`
+                      ? sessao.veiculo.descricao
                       : "veículo removido"}
                   </span>
                 </td>

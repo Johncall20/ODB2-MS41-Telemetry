@@ -17,14 +17,21 @@ function Esperando() {
 
 /** Envolve as telas internas: sem sessao, manda para /login. */
 export function ExigeSessao() {
-  const { usuario, carregando } = useAutenticacao();
+  const { usuario, carregando, expirou } = useAutenticacao();
   const lugar = useLocation();
 
   if (carregando) return <Esperando />;
   if (!usuario) {
-    // `state` guarda de onde a pessoa veio, e `replace` evita empilhar o
+    // `state` guarda de onde a pessoa veio (o login volta para la) e se a
+    // sessao expirou (o login avisa); `replace` evita empilhar o
     // redirecionamento no historico.
-    return <Navigate to="/login" replace state={{ de: lugar.pathname }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ de: lugar.pathname + lugar.search, expirou }}
+      />
+    );
   }
   return <Outlet />;
 }
@@ -32,9 +39,13 @@ export function ExigeSessao() {
 /** Envolve login e cadastro: com sessao, manda para dentro. */
 export function SoDeslogado() {
   const { usuario, carregando } = useAutenticacao();
+  const lugar = useLocation();
 
   if (carregando) return <Esperando />;
-  if (usuario) return <Navigate to="/veiculos" replace />;
+  // Quem acabou de entrar volta para onde estava quando a sessao caiu (o
+  // mesmo destino que o Login escolhe - nenhum dos dois ganha a corrida
+  // levando para outro lugar).
+  if (usuario) return <Navigate to={lugar.state?.de || "/veiculos"} replace />;
   return <Outlet />;
 }
 

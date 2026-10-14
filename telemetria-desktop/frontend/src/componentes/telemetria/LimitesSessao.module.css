@@ -1,0 +1,77 @@
+/* A secao "Limites de alerta" do popup "Nova sessão". */
+
+.secao {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.legenda {
+  margin: 0;
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+/*
+  O seletor de origem: tres opcoes lado a lado, uma so marcada. E um
+  grupo de radio de verdade (o input fica escondido mas focavel); o
+  rotulo inteiro e a area de clique.
+*/
+.seletor {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.opcao {
+  padding: 10px 18px;
+  font-size: 15px;
+  color: var(--apagado);
+  cursor: pointer;
+  user-select: none;
+}
+
+.opcao + .opcao {
+  border-left: 1px solid var(--linha);
+}
+
+.opcao:focus-within {
+  outline: 2px solid var(--ambar);
+  outline-offset: -2px;
+}
+
+.opcao-ativa {
+  background: var(--chip-ambar);
+  color: var(--ambar);
+}
+
+.opcao-desabilitada {
+  color: var(--fraco);
+  cursor: not-allowed;
+}
+
+/* Os seis limites em 3 colunas por 2 linhas, como texto ou como input. */
+.grade {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 22px;
+  margin: 0;
+}
+
+.unidade {
+  color: var(--fraco);
+}
+
+.lido {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.valor-lido {
+  margin: 0;
+  font-size: 20px;
+  color: var(--texto);
+}

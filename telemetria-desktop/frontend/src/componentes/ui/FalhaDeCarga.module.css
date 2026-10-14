@@ -1,0 +1,18 @@
+/* A falha de carga de uma tela com :id - abaixo da migalha. */
+
+.aviso {
+  margin-top: 24px;
+}
+
+/* "Tentar de novo" com cara de link, como os links do aviso. */
+.tentar {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

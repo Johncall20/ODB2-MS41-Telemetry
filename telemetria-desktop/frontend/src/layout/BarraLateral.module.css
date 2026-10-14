@@ -42,6 +42,8 @@
   font-size: 17px;
   color: var(--apagado);
   text-decoration: none;
+  /* "Ao vivo" com "Sem confirmação" ao lado nao pode quebrar em duas. */
+  white-space: nowrap;
 }
 
 .link:hover {
@@ -204,4 +206,15 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Gravacao que o app nao consegue confirmar (sem ligacao com o servidor):
+   apagada e parada - pulsar afirmaria que esta gravando. */
+.sem-confirmacao {
+  color: var(--apagado);
+}
+
+.sem-confirmacao .ponto {
+  background: var(--apagado);
+  animation: none;
 }

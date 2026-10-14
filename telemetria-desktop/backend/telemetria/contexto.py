@@ -11,7 +11,14 @@ from typing import Optional
 from starlette.requests import HTTPConnection
 
 from .servicos.gravador import Gravador, Hub
-from .servicos.leitor import NOME_PADRAO, LeitorBase, LeitorBLE, LeitorSimulado
+from .modelos import PerfilEcu
+from .servicos.leitor import (
+    NOME_PADRAO,
+    LeitorBase,
+    LeitorBLE,
+    LeitorSimulado,
+    compatibilidade_do_perfil,
+)
 
 
 class Contexto:
@@ -23,6 +30,10 @@ class Contexto:
         self.hub = Hub()
         self.gravador = Gravador(self.hub)
         self.leitor: Optional[LeitorBase] = None
+        # As gravacoes que o processo anterior deixou no meio e que este
+        # fechou ao subir (`consolidacao.encerrar_orfas`). Ficam ate o dono
+        # dizer que viu: a tela do Ao vivo avisa que foram interrompidas.
+        self.interrompidas: list[dict] = []
 
     def configurar(self, *, usar_simulador: bool, nome_ble: str) -> None:
         """Aplica o que veio da linha de comando. So vale antes de iniciar:
@@ -34,6 +45,22 @@ class Contexto:
     def fonte(self) -> str:
         """"simulador" ou "ble" - o que a tela mostra no topo."""
         return "simulador" if self.usar_simulador else "ble"
+
+    def compatibilidade(self, perfil: Optional[PerfilEcu]) -> Optional[dict]:
+        """O carro deste perfil pode gravar com a fonte DESTE processo?"""
+        return compatibilidade_do_perfil(perfil, self.usar_simulador, self.nome_ble)
+
+    def interrompida_de(self, usuario_id: int) -> Optional[dict]:
+        """A gravacao interrompida mais recente desta conta, ou None."""
+        delas = [i for i in self.interrompidas if i["usuario_id"] == usuario_id]
+        if not delas:
+            return None
+        ultima = max(delas, key=lambda i: i["sessao_id"])
+        return {k: v for k, v in ultima.items() if k != "usuario_id"}
+
+    def ciente(self, usuario_id: int) -> None:
+        """O dono viu o aviso: as interrompidas dele saem da lista."""
+        self.interrompidas = [i for i in self.interrompidas if i["usuario_id"] != usuario_id]
 
     async def iniciar(self) -> None:
         """Cria a fonte escolhida e poe leitor e gravador para rodar."""

@@ -1,0 +1,155 @@
+/*
+  O berco do painel e a LINHA da entrada, nao a caixa do campo. A caixa
+  leva rotulo, dica e erro, e na grade do formulario estica ate a altura
+  da linha - com top: 100% dela, um texto de apoio no campo vizinho
+  descolava a lista do campo. A linha tem sempre a altura da entrada.
+*/
+.linha {
+  position: relative;
+}
+
+/* Espaco a direita para a seta nao ficar por cima do texto. */
+.entrada {
+  padding-right: 44px;
+}
+
+.entrada:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* A seta faz o campo tambem parecer um select: da para so escolher. */
+.seta {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  color: var(--apagado);
+  pointer-events: none;
+}
+
+.seta-aberta {
+  transform: translateY(-50%) rotate(180deg);
+  color: var(--ambar);
+}
+
+/*
+  O painel: cabecalho fixo, a lista que rola e, embaixo, as pecas fixas
+  (a "Outra", o "Não encontrei meu modelo") - sempre visiveis, filtre o
+  que filtrar.
+*/
+.painel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: var(--fundo-alto);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.cabecalho {
+  margin: 0;
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--linha);
+  font-size: 13px;
+  color: var(--fraco);
+  user-select: none;
+}
+
+/* Cerca de 8 itens visiveis (42px cada), o resto por rolagem. */
+.rolagem {
+  max-height: calc(8 * 42px);
+  overflow-y: auto;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  /* A barra no tema escuro: polegar apagado, trilho transparente. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--fraco) transparent;
+}
+
+.rolagem::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rolagem::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rolagem::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--fraco);
+}
+
+.rolagem::-webkit-scrollbar-thumb:hover {
+  background: var(--apagado);
+}
+
+.fixos {
+  margin: 4px 0 0;
+  padding: 4px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--linha);
+}
+
+.opcao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.opcao-ativa {
+  background: var(--chip-neutro);
+}
+
+/* O valor escolhido, para se achar ao reabrir a lista. */
+.opcao-escolhida {
+  color: var(--ambar);
+}
+
+.nome {
+  min-width: 0;
+}
+
+/* O trecho que casou com a busca. */
+.casou {
+  padding: 0;
+  border-radius: 2px;
+  background: var(--chip-ambar);
+  color: var(--ambar);
+}
+
+.marcador {
+  flex: none;
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+.vazio {
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+/* A acao fixa do fim ("Não encontrei meu modelo"): ambar, para nao ser
+   lida como mais um modelo. */
+.rodape {
+  color: var(--ambar);
+}
+
+.dica {
+  font-size: 14px;
+  color: var(--apagado);
+}

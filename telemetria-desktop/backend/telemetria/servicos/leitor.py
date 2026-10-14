@@ -11,11 +11,12 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import random
 import time
 from typing import Awaitable, Callable, Optional
 
-from ..modelos import EstadoLeitor, VALID_COMPLETO
+from ..modelos import EstadoLeitor, PerfilEcu, VALID_COMPLETO
 
 NUS_TX_CHAR = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 NOME_PADRAO = "E36-DS2"
@@ -24,6 +25,44 @@ CamposEsperados = ("t", "rpm", "ect", "iat", "vbat", "tps", "vanos", "vss", "val
 
 RetornoLeitura = Callable[[dict], Awaitable[None]]
 RetornoEstado = Callable[[EstadoLeitor, str], Awaitable[None]]
+
+# O unico perfil que o adaptador BLE sabe ler: o ESP32 fala DS2 com a MS41.
+PERFIL_DO_ADAPTADOR = PerfilEcu.SIEMENS_MS41_DS2
+
+# Como o perfil aparece na frase de recusa. O rotulo de tela mora no front
+# (formato.ROTULO_PERFIL_ECU); este e so o da mensagem do backend.
+_NOME_PERFIL = {PerfilEcu.OBD2_GENERICO: "OBD-II genérico"}
+
+
+def compatibilidade_do_perfil(
+    perfil: Optional[PerfilEcu], simulador: bool, nome_ble: str = NOME_PADRAO
+) -> Optional[dict]:
+    """O carro pode gravar com esta fonte? A regra mora so aqui.
+
+    - simulador: sempre pode - ele nao le central nenhuma, e travar ali so
+      impediria de testar o app com qualquer carro do cadastro;
+    - BLE e perfil conhecido diferente da MS41: `bloqueia` (a rota de
+      iniciar responde 409);
+    - BLE e perfil nulo ("nao informado"): so avisa. Nulo e o carro
+      cadastrado antes da `0009`, e o mais provavel e ser justamente o E36
+      que o adaptador le - bloquear seria punir cadastro incompleto.
+
+    Devolve None quando nao ha nada a dizer, senao `{"bloqueia", "mensagem"}`.
+    """
+    if simulador or perfil == PERFIL_DO_ADAPTADOR:
+        return None
+    if perfil is None:
+        return {
+            "bloqueia": False,
+            "mensagem": f"Perfil da ECU não informado. O adaptador {nome_ble} só lê a "
+            "Siemens MS41; confira o cadastro do carro.",
+        }
+    nome = _NOME_PERFIL.get(perfil, perfil.value)
+    return {
+        "bloqueia": True,
+        "mensagem": f"O adaptador {nome_ble} só lê a Siemens MS41, e este carro está "
+        f"cadastrado com {nome}.",
+    }
 
 
 class MontadorDeLinha:
@@ -158,7 +197,7 @@ class LeitorBLE(LeitorBase):
                         timeout=8.0,
                     )
                 if dev is None:
-                    await self._definir_estado(EstadoLeitor.PROCURANDO, "modulo nao apareceu, tentando de novo")
+                    await self._definir_estado(EstadoLeitor.PROCURANDO, "módulo não apareceu, tentando de novo")
                     await asyncio.sleep(3)
                     continue
 
@@ -182,16 +221,33 @@ class LeitorBLE(LeitorBase):
                 await asyncio.sleep(2)
 
 
+def _ler_queda(texto: Optional[str]) -> Optional[tuple[float, float]]:
+    """"40:12" -> (40.0, 12.0); vazio ou fora do formato, sem queda."""
+    try:
+        ativo, parado = (float(x) for x in (texto or "").split(":"))
+    except ValueError:
+        return None
+    return (ativo, parado) if ativo > 0 and parado > 0 else None
+
+
 class LeitorSimulado(LeitorBase):
     """A fonte de mentira, para trabalhar sem o carro.
 
     Apaga um bit de `valid` as vezes, de proposito: e assim que se testa
     a regra do `valid` sem depender de um link BLE ruim de verdade.
+
+    Com `TELEMETRIA_SIM_QUEDA="ATIVO:QUEDA"` (segundos) o modulo "some" de
+    tempos em tempos: depois de ATIVO s lendo, fica QUEDA s sem mandar
+    nada, em PROCURANDO, como o BLE faz quando o link cai - e volta. E o
+    caminho de verdade do backend (estado do leitor, PERDA_CONEXAO, buraco
+    na serie) e o da tela (leitura parada, "procurando o módulo"), sem
+    precisar do carro.
     """
 
-    def __init__(self, ao_ler, ao_mudar_estado, hz: float = 1.0):
+    def __init__(self, ao_ler, ao_mudar_estado, hz: float = 1.0, queda: Optional[str] = None):
         super().__init__(ao_ler, ao_mudar_estado)
         self.periodo = 1.0 / hz
+        self.queda = _ler_queda(queda if queda is not None else os.environ.get("TELEMETRIA_SIM_QUEDA"))
 
     async def _laco(self) -> None:
         await self._definir_estado(EstadoLeitor.PROCURANDO, "iniciando simulador")
@@ -204,6 +260,15 @@ class LeitorSimulado(LeitorBase):
 
         while True:
             t = time.monotonic() - t0
+            if self.queda:
+                ativo, parado = self.queda
+                if t % (ativo + parado) >= ativo:
+                    await self._definir_estado(
+                        EstadoLeitor.PROCURANDO, "módulo não respondeu (queda simulada)"
+                    )
+                    await asyncio.sleep(self.periodo)
+                    continue
+                await self._definir_estado(EstadoLeitor.CONECTADO, "fonte simulada")
             alvo = 800 + max(0.0, math.sin(t / 9.0)) ** 3 * 5800
             rpm += (alvo - rpm) * 0.45 + random.uniform(-40, 40)
             rpm = max(650.0, min(7000.0, rpm))

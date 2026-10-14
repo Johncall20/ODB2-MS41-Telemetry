@@ -38,7 +38,7 @@ COOKIE = "telemetria_sessao"
 # tentar.
 CREDENCIAL_INVALIDA = "e-mail ou senha incorretos"
 
-EMAIL_EM_USO = {"erro": "email_em_uso", "mensagem": "ja existe uma conta com este e-mail"}
+EMAIL_EM_USO = {"erro": "email_em_uso", "mensagem": "já existe uma conta com este e-mail"}
 
 
 def _gravar_cookie(resposta: Response, token: str, request: Request) -> None:
@@ -85,7 +85,7 @@ def usuario_atual(request: Request) -> Usuario:
     """
     usuario = autenticacao.usuario_do_token(_token_da_requisicao(request))
     if usuario is None:
-        raise HTTPException(401, "faca login para continuar")
+        raise HTTPException(401, "faça login para continuar")
     return usuario
 
 
@@ -166,7 +166,7 @@ def trocar_papel(
     """
     atualizado = repo_usuarios.trocar_papel(usuario.id, entrada.papel)
     if atualizado is None:
-        raise HTTPException(404, "conta nao encontrada")
+        raise HTTPException(404, "conta não encontrada")
     if atualizado.papel == PapelUsuario.PARTICULAR:
         repo_clientes.implicito_de(atualizado.id, atualizado.nome)
     return usuario_publico(atualizado)
@@ -211,7 +211,7 @@ def editar_perfil(entrada: PerfilEntrada, usuario: Usuario = Depends(usuario_atu
     except IntegrityError:
         raise HTTPException(409, EMAIL_EM_USO)
     if atualizado is None:
-        raise HTTPException(404, "conta nao encontrada")
+        raise HTTPException(404, "conta não encontrada")
     return usuario_publico(atualizado)
 
 
@@ -281,7 +281,7 @@ def excluir_conta(
                 409,
                 {
                     "erro": "gravacao_ativa",
-                    "mensagem": "encerre a gravacao no Ao vivo antes de excluir a conta",
+                    "mensagem": "encerre a gravação no Ao vivo antes de excluir a conta",
                 },
             )
 

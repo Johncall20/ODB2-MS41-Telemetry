@@ -248,6 +248,7 @@ function Papel() {
   const { usuario, recarregar } = useAutenticacao();
   const [escolhido, setEscolhido] = useState(usuario.papel);
   const [clientes, setClientes] = useState(null);
+  const [erroClientes, setErroClientes] = useState("");
   const [salvou, setSalvou] = useState(false);
   const { erro, ocupado, enviar } = useEnvio();
 
@@ -256,7 +257,7 @@ function Papel() {
     api
       .listarClientes()
       .then((lista) => setClientes(lista.length))
-      .catch(() => setClientes(null));
+      .catch((falha) => setErroClientes(falha.message));
   }, []);
 
   const mudou = escolhido !== usuario.papel;
@@ -310,6 +311,13 @@ function Papel() {
           voltar para Profissional reencontra tudo.
         </Aviso>
       )}
+      {/* Sem a contagem, o aviso de clientes que somem nao tem como sair: a
+          tela diz isso em vez de trocar de papel calada. */}
+      {mudou && escolhido === "PARTICULAR" && erroClientes && (
+        <Aviso>
+          Não foi possível conferir quantos clientes a conta tem: {erroClientes}
+        </Aviso>
+      )}
       {erro && <Aviso>{erro}</Aviso>}
 
       <div className={s.acoes}>
@@ -341,6 +349,7 @@ function Exclusao() {
   const { usuario, excluirConta } = useAutenticacao();
   const [aberto, setAberto] = useState(false);
   const [dados, setDados] = useState(null);
+  const [erroDados, setErroDados] = useState("");
   const [senha, setSenha] = useState("");
   const [confirmacao, setConfirmacao] = useState("");
   const { erro, ocupado, enviar } = useEnvio();
@@ -348,7 +357,11 @@ function Exclusao() {
   // As contagens so quando o bloco abre: e so ali que elas servem.
   useEffect(() => {
     if (!aberto) return;
-    api.dadosDaConta().then(setDados).catch(() => setDados(null));
+    setErroDados("");
+    api
+      .dadosDaConta()
+      .then(setDados)
+      .catch((falha) => setErroDados(falha.message));
   }, [aberto]);
 
   const confirmou = confirmacao.trim().toLowerCase() === usuario.email;
@@ -400,6 +413,11 @@ function Exclusao() {
                   com todas as amostras e eventos
                 </li>
               </>
+            ) : erroDados ? (
+              <li>
+                clientes, veículos e sessões da conta (não foi possível contá-los:{" "}
+                {erroDados})
+              </li>
             ) : (
               <li>carregando o que há na conta…</li>
             )}

@@ -42,6 +42,41 @@ class PapelUsuario(str, Enum):
     PARTICULAR = "PARTICULAR"       # cuida do proprio carro
 
 
+class Combustivel(str, Enum):
+    """O combustivel do carro. So cadastro e exibicao."""
+
+    GASOLINA = "GASOLINA"
+    ETANOL = "ETANOL"
+    FLEX = "FLEX"
+    DIESEL = "DIESEL"
+    GNV = "GNV"
+    HIBRIDO = "HIBRIDO"
+
+
+class Cambio(str, Enum):
+    """O cambio do carro. So cadastro e exibicao - nao ha tabela de
+    relacoes, entao a marcha continua fora (ver "Limitacoes conhecidas")."""
+
+    MANUAL = "MANUAL"
+    AUTOMATICO = "AUTOMATICO"
+    AUTOMATIZADO = "AUTOMATIZADO"
+    CVT = "CVT"
+
+
+class PerfilEcu(str, Enum):
+    """Que central o carro tem. O protocolo e consequencia do perfil, nao
+    um campo separado.
+
+    A fonte de dados continua decidida na linha de comando (`--sim` ou BLE
+    no `E36-DS2`), e o unico hardware que o projeto le e a Siemens MS41 por
+    DS2. Com o BLE, carro de outro perfil nao grava - a regra e
+    `servicos/leitor.compatibilidade_do_perfil()`.
+    """
+
+    OBD2_GENERICO = "OBD2_GENERICO"
+    SIEMENS_MS41_DS2 = "SIEMENS_MS41_DS2"
+
+
 class EstadoLeitor(str, Enum):
     """Em que pe esta a ligacao com o adaptador BLE."""
 

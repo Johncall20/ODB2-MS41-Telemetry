@@ -47,7 +47,7 @@ def evolucao(
     """
     veiculo = repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True)
     if veiculo is None:
-        raise HTTPException(404, "veiculo nao encontrado")
+        raise HTTPException(404, "veículo não encontrado")
     return {
         "veiculo": veiculo_resumido(veiculo),
         "periodo": periodo,
@@ -80,17 +80,17 @@ def comparacao(
     fixas. Exige o mesmo veiculo - comparar carros diferentes nao diz nada.
     """
     if a == b:
-        raise HTTPException(400, "escolha duas sessoes diferentes")
+        raise HTTPException(400, "escolha duas sessões diferentes")
 
     lados = []
     for sessao_id in (a, b):
         sessao = repo_sessoes.buscar(sessao_id, usuario.id)
         if sessao is None:
-            raise HTTPException(404, f"sessao {sessao_id} nao encontrada")
+            raise HTTPException(404, f"sessão {sessao_id} não encontrada")
         lados.append(sessao)
 
     if lados[0].veiculo_id != lados[1].veiculo_id:
-        raise HTTPException(400, "as duas sessoes precisam ser do mesmo veiculo")
+        raise HTTPException(400, "as duas sessões precisam ser do mesmo veículo")
 
     veiculo = repo_veiculos.buscar(lados[0].veiculo_id, usuario.id, incluir_arquivados=True)
 

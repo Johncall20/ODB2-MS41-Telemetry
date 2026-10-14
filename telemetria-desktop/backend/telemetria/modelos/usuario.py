@@ -10,7 +10,7 @@ a publica por descuido.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime
+from sqlalchemy import CheckConstraint, DateTime, Index, text
 from sqlmodel import Field, SQLModel
 
 from .comum import agora
@@ -18,6 +18,15 @@ from .enums import PapelUsuario
 
 
 class Usuario(SQLModel, table=True):
+    # Espelham a migration 0008. O CHECK de minusculas mais o indice em
+    # lower(email) e o que garante unicidade sem diferenciar maiusculas no
+    # proprio banco, e nao so na entrada.
+    __table_args__ = (
+        CheckConstraint("nome <> '' AND nome = btrim(nome)", name="ck_usuario_nome"),
+        CheckConstraint("email = lower(email)", name="ck_usuario_email_minusculo"),
+        Index("ux_usuario_email_lower", text("lower(email)"), unique=True),
+    )
+
     id: Optional[int] = Field(default=None, primary_key=True)
     nome: str
     # Guardado em minusculas e sem espaco nas pontas (normalizado na

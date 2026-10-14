@@ -133,3 +133,7 @@ def downgrade() -> None:
     op.drop_table('veiculo')
     op.drop_table('limites')
     # ### end Alembic commands ###
+    # O Alembic cria os tipos enum junto das tabelas, mas nao os apaga com
+    # elas: sem isto, `downgrade base` + `upgrade head` falhava no CREATE TYPE.
+    sa.Enum(name='tipoevento').drop(op.get_bind(), checkfirst=True)
+    sa.Enum(name='statussessao').drop(op.get_bind(), checkfirst=True)

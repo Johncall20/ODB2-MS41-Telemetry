@@ -3,21 +3,28 @@
 
   E de onde se comeca a gravar, e onde se arquiva ou restaura o carro.
 */
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { useAutenticacao } from "../hooks/useAutenticacao.js";
 import {
+  ROTULO_CAMBIO,
+  ROTULO_COMBUSTIVEL,
   ROTULO_EVENTO,
+  ROTULO_PERFIL_ECU,
+  anoVeiculo,
   dataHora,
   duracao,
   milhar,
   nomeCliente,
-  placa,
+  formatarPlaca,
   quilometragem,
+  rotulo,
 } from "../formato.js";
-import { Play, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { Play, RotateCcw } from "lucide-react";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
+import { FalhaDeCarga } from "../componentes/ui/FalhaDeCarga.jsx";
+import { useCarga } from "../componentes/ui/useCarga.js";
 import { Chip, Chips } from "../componentes/ui/Chip.jsx";
 import { Migalha } from "../componentes/ui/Migalha.jsx";
 import { Seta } from "../componentes/ui/Seta.jsx";
@@ -33,30 +40,19 @@ export function Veiculo() {
   const { id } = useParams();
   const navegar = useNavigate();
   const { usuario } = useAutenticacao();
-  const [dados, setDados] = useState(null);
-  // Dois erros separados: o de carregar troca a pagina pelo aviso (nao ha
+  // Dois erros separados: o de carregar troca a pagina pela falha (nao ha
   // o que mostrar), o de restaurar aparece em cima da ficha, que continua
   // la - a pessoa precisa dela para decidir o que fazer com o 409.
-  const [erro, setErro] = useState("");
+  const { dados, falha, tentarDeNovo, recarregar } = useCarga(id, api.lerVeiculo);
   const [erroAcao, setErroAcao] = useState("");
   const [ocupado, setOcupado] = useState(false);
-
-  const carregar = useCallback(() => {
-    setDados(null);
-    api
-      .lerVeiculo(id)
-      .then(setDados)
-      .catch((e) => setErro(String(e.message || e)));
-  }, [id]);
-
-  useEffect(carregar, [carregar]);
 
   async function restaurar() {
     setErroAcao("");
     setOcupado(true);
     try {
       await api.restaurarVeiculo(id);
-      carregar();
+      await recarregar();
     } catch (e) {
       // 409 de placa em uso ou de cliente arquivado: a frase do backend
       // ja diz o que fazer.
@@ -66,7 +62,7 @@ export function Veiculo() {
     }
   }
 
-  if (erro) return <Aviso>{erro}</Aviso>;
+  if (falha) return <FalhaDeCarga recurso="veiculo" falha={falha} aoTentar={tentarDeNovo} />;
   if (!dados) return <p className={c.paginaVazia}>Carregando…</p>;
 
   const { veiculo, cliente, sessoes, total_sessoes } = dados;
@@ -75,8 +71,8 @@ export function Veiculo() {
   // carros"; para o PARTICULAR todo carro e dele, e o nome repetiria o
   // de quem esta olhando.
   const legenda = [
-    veiculo.marca && `${veiculo.marca} ${veiculo.modelo}`,
-    veiculo.ano,
+    veiculo.descricao,
+    anoVeiculo(veiculo),
     cliente && usuario?.papel === "PROFISSIONAL"
       ? nomeCliente(cliente.nome, cliente.implicito)
       : null,
@@ -93,7 +89,7 @@ export function Veiculo() {
       <header className={c.paginaTopoVeiculo}>
         <div>
           <div className={s.placaLinha}>
-            <h1 className={`${s.placa} ${c.mono}`}>{placa(veiculo.placa) || "sem placa"}</h1>
+            <h1 className={`${s.placa} ${c.mono}`}>{formatarPlaca(veiculo.placa) || "sem placa"}</h1>
             {arquivado && <Chip>arquivado</Chip>}
           </div>
           <p className={c.paginaSubtituloVeiculo}>{legenda}</p>
@@ -101,14 +97,6 @@ export function Veiculo() {
         <div className={c.acoes}>
           <button className={c.botao} onClick={() => navegar(`/veiculos/${id}/editar`)}>
             Editar
-          </button>
-          {/*
-            Limite e por carro, entao a tela dele se alcanca pelo carro -
-            nao ha ajuste global em lugar nenhum.
-          */}
-          <button className={c.botao} onClick={() => navegar(`/veiculos/${id}/limites`)}>
-            <SlidersHorizontal className={c.botaoIcone} size={20} aria-hidden="true" />
-            Limites de alerta
           </button>
           {/*
             Arquivado nao grava sessao nova - o backend recusa. No lugar do
@@ -137,10 +125,13 @@ export function Veiculo() {
 
       {erroAcao && <Aviso>{erroAcao}</Aviso>}
 
-      <div className={c.cartoes}>
+      <div className={`${c.cartoes} ${c.cartoesSeis}`}>
         <Cartao rotulo="Motor" valor={veiculo.motor} mono />
-        <Cartao rotulo="ECU" valor={veiculo.ecu} />
-        <Cartao rotulo="Protocolo" valor={veiculo.protocolo} />
+        {/* Vazio = carro cadastrado antes destes campos: o cartao escreve
+            "não informado". O protocolo nao tem cartao: vem do perfil. */}
+        <Cartao rotulo="Combustível" valor={rotulo(ROTULO_COMBUSTIVEL, veiculo.combustivel)} />
+        <Cartao rotulo="Câmbio" valor={rotulo(ROTULO_CAMBIO, veiculo.cambio)} />
+        <Cartao rotulo="ECU" valor={rotulo(ROTULO_PERFIL_ECU, veiculo.perfil_ecu)} />
         <Cartao rotulo="Quilometragem" valor={quilometragem(veiculo.quilometragem)} mono />
         <Cartao rotulo="Sessões" valor={String(total_sessoes)} mono />
       </div>
@@ -159,6 +150,8 @@ export function Veiculo() {
           <thead>
             <tr>
               <th>Data</th>
+              {/* O km de cada sessao e o historico de quilometragem do carro. */}
+              <th>Km</th>
               <th>Duração</th>
               <th>RPM máx.</th>
               <th>Vel. máx.</th>
@@ -171,6 +164,9 @@ export function Veiculo() {
               <tr key={sessao.id} onClick={() => navegar(`/sessoes/${sessao.id}`)} tabIndex={0}
                   onKeyDown={(e) => e.key === "Enter" && navegar(`/sessoes/${sessao.id}`)}>
                 <td className={c.mono}>{dataHora(sessao.iniciada_em)}</td>
+                <td className={sessao.km === null ? c.celulaNula : c.mono}>
+                  {sessao.km === null ? "—" : milhar(sessao.km)}
+                </td>
                 <td className={`${c.mono} ${c.celulaApagada}`}>{duracao(sessao.resumo?.duracao_s)}</td>
                 {/*
                   Pico nulo quer dizer que nenhuma amostra da sessao trouxe o

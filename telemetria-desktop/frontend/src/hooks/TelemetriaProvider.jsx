@@ -10,8 +10,13 @@
   isso muda o que cada coisa significa; ver os comentarios de `sessao`.
 */
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, avisarSessaoExpirada } from "../api.js";
 
 const TAMANHO_HISTORICO = 180; // 3 minutos a 1 Hz
+
+// 1008 e o fechamento que o backend usa para "sem login" (no handshake ou
+// quando o token vence com o socket aberto). Reconectar nao adianta.
+const SEM_LOGIN = 1008;
 
 export const ContextoTelemetria = createContext(null);
 
@@ -22,6 +27,13 @@ export function TelemetriaProvider({ children }) {
   const [eventos, setEventos] = useState([]);
   const [leitor, setLeitor] = useState({ estado: "DESLIGADO", detalhe: "" });
   const [conectadoWs, setConectadoWs] = useState(false);
+  // Quando a ultima amostra CHEGOU, pelo relogio desta maquina (o `t_ms`
+  // e o do ESP32). E dele que a tela tira "sem leitura ha X s": o socket
+  // pode estar de pe com o BLE caido, e ai simplesmente nada chega.
+  const [chegouEm, setChegouEm] = useState(null);
+  // Quando o socket caiu (null com ele de pe): o cronometro da gravacao
+  // para ali, porque dali em diante nada confirma que ela continua.
+  const [caiuEm, setCaiuEm] = useState(null);
   const [gravadas, setGravadas] = useState(0);
   const [status, setStatus] = useState(null);
   const wsRef = useRef(null);
@@ -32,13 +44,15 @@ export function TelemetriaProvider({ children }) {
   /** Repuxa /api/status. O websocket avisa o que muda; isto e para o que
    *  ja tinha acontecido antes de a tela abrir. */
   const recarregarStatus = useCallback(async () => {
+    // Pelo api.js, como toda chamada: um 401 aqui e sessao expirada (vai
+    // ao login), e uma resposta de erro nunca vira o "status" da tela.
     try {
-      const r = await fetch("/api/status");
-      const novo = await r.json();
+      const novo = await api.status();
       statusRef.current = novo;
       setStatus(novo);
     } catch {
-      /* backend fora do ar, o proprio ws ja sinaliza */
+      /* servidor fora do ar: o proprio ws ja sinaliza, e o api.js ja
+         registrou o detalhe no console */
     }
   }, []);
 
@@ -53,6 +67,7 @@ export function TelemetriaProvider({ children }) {
 
       ws.onopen = () => {
         setConectadoWs(true);
+        setCaiuEm(null);
         recarregarStatus();
       };
 
@@ -60,6 +75,7 @@ export function TelemetriaProvider({ children }) {
         const { tipo, dados } = JSON.parse(ev.data);
         if (tipo === "amostra") {
           setAmostra(dados);
+          setChegouEm(Date.now());
           setHistorico((h) => [...h, dados].slice(-TAMANHO_HISTORICO));
           // Conta aqui em vez de perguntar ao backend a cada ciclo: o
           // numero exato so importa ao encerrar, e ai o resumo manda.
@@ -92,9 +108,18 @@ export function TelemetriaProvider({ children }) {
         }
       };
 
-      const cair = () => {
+      const cair = (ev) => {
         setConectadoWs(false);
-        if (vivo) timer = setTimeout(conectar, 1500);
+        setCaiuEm((antes) => antes ?? Date.now());
+        if (!vivo) return;
+        // Sessao vencida (ou logout em outra aba): reconectar daria 1008
+        // de novo a cada 1,5 s, para sempre. Para, e o provider de
+        // autenticacao leva ao login com "Sua sessão expirou".
+        if (ev?.code === SEM_LOGIN) {
+          avisarSessaoExpirada();
+          return;
+        }
+        timer = setTimeout(conectar, 1500);
       };
       ws.onclose = cair;
       ws.onerror = () => ws.close();
@@ -116,11 +141,13 @@ export function TelemetriaProvider({ children }) {
       eventos,
       leitor,
       conectadoWs,
+      chegouEm,
+      caiuEm,
       status,
       gravadas,
       recarregarStatus,
     }),
-    [amostra, historico, eventos, leitor, conectadoWs, status, gravadas, recarregarStatus]
+    [amostra, historico, eventos, leitor, conectadoWs, chegouEm, caiuEm, status, gravadas, recarregarStatus]
   );
 
   return <ContextoTelemetria.Provider value={valor}>{children}</ContextoTelemetria.Provider>;

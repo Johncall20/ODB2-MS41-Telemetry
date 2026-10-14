@@ -2,16 +2,19 @@
  * Um card de leitura do painel (nodes 5:106 / 5:307).
  *
  * Com o bit de `valid` apagado o numero some, o rotulo diz "sem resposta"
- * e o card fica apagado - nunca o ultimo valor lido.
+ * e o card fica apagado - nunca o ultimo valor lido. `semLeitura` ("sem
+ * leitura há 8 s") e o mesmo para a amostra que parou de chegar (socket
+ * ou BLE caido): o numero velho nao fica na tela como se fosse de agora.
  */
 import c from "../../estilos/comum.module.css";
 import s from "./Leitura.module.css";
 
-export function Leitura({ rotulo, valor, unidade, casas = 0, invalido, largo, children }) {
+export function Leitura({ rotulo, valor, unidade, casas = 0, invalido, semLeitura, largo, children }) {
   const semNumero = valor === null || valor === undefined;
+  const apagado = invalido || Boolean(semLeitura);
   // Agrupamento de milhar e virgula decimal, como no Figma ("2.940", "13,9").
   const texto =
-    invalido || semNumero
+    apagado || semNumero
       ? "––"
       : Number(valor).toLocaleString("pt-BR", {
           minimumFractionDigits: casas,
@@ -20,15 +23,19 @@ export function Leitura({ rotulo, valor, unidade, casas = 0, invalido, largo, ch
 
   return (
     <div
-      className={`${c.card} ${largo ? s.largo : ""} ${invalido ? s.parado : ""}`.trim()}
+      className={`${c.card} ${largo ? s.largo : ""} ${apagado ? s.parado : ""}`.trim()}
     >
       <span className={c.cardRotulo}>
         {rotulo}
-        {invalido && <span className={s.semResposta}> · sem resposta</span>}
+        {semLeitura ? (
+          <span className={s.semLeitura}> · {semLeitura}</span>
+        ) : (
+          invalido && <span className={s.semResposta}> · sem resposta</span>
+        )}
       </span>
       <span className={`${s.numero} ${c.mono}`}>
         {texto}
-        {unidade && !invalido && <span className={s.unidade}>{unidade}</span>}
+        {unidade && !apagado && <span className={s.unidade}>{unidade}</span>}
       </span>
       {children}
     </div>

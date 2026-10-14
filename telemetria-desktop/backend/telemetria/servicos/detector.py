@@ -8,11 +8,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..modelos import Amostra, Evento, LimitesVeiculo, TipoEvento, campos_invalidos
+from ..modelos import Amostra, Evento, Limites, TipoEvento, campos_invalidos
 
 MARGEM_RPM = 300
 MARGEM_TEMP = 4
 MARGEM_VBAT = 0.3
+
+# Quantos ciclos seguidos com falha viram LEITURA_INCOMPLETA. O mesmo
+# numero decide os trechos sombreados da Analise
+# (`metricas.trechos_sem_leitura`): cada trecho e um evento destes.
+CICLOS_LEITURA_INCOMPLETA = 5
 
 
 @dataclass
@@ -23,7 +28,9 @@ class DetectorEventos:
     de um detector novo.
     """
 
-    limites: LimitesVeiculo
+    # Os limites DA SESSAO, escolhidos ao iniciar. Imutaveis: a sessao
+    # nao muda de limite no meio da gravacao.
+    limites: Limites
     _armado_shift: bool = field(default=True, init=False)
     _armado_rpm: bool = field(default=True, init=False)
     _armado_temp: bool = field(default=True, init=False)
@@ -57,7 +64,7 @@ class DetectorEventos:
             if a.ect >= lim.temp_alta_c and self._armado_temp:
                 self._armado_temp = False
                 eventos.append(
-                    self._novo(a, TipoEvento.TEMP_ALTA, f"agua a {a.ect} C")
+                    self._novo(a, TipoEvento.TEMP_ALTA, f"água a {a.ect} °C")
                 )
             elif a.ect < lim.temp_alta_c - MARGEM_TEMP:
                 self._armado_temp = True
@@ -79,16 +86,17 @@ class DetectorEventos:
                 self._armado_vbat = True
 
         # Leitura incompleta persistente indica problema no barramento K-line,
-        # nao no motor. Registra so depois de 5 ciclos seguidos com falha.
+        # nao no motor. Registra so depois de CICLOS_LEITURA_INCOMPLETA ciclos
+        # seguidos com falha.
         if not a.completa():
             self._ciclos_incompletos += 1
-            if self._ciclos_incompletos == 5:
+            if self._ciclos_incompletos == CICLOS_LEITURA_INCOMPLETA:
                 faltando = ", ".join(campos_invalidos(a.valid))
                 eventos.append(
                     self._novo(
                         a,
                         TipoEvento.LEITURA_INCOMPLETA,
-                        f"5 ciclos seguidos sem: {faltando}",
+                        f"{CICLOS_LEITURA_INCOMPLETA} ciclos seguidos sem: {faltando}",
                     )
                 )
         else:

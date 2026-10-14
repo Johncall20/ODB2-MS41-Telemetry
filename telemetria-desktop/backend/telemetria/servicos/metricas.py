@@ -15,9 +15,11 @@ sessao, nao de constante. O cadastro aceita qualquer carro.
 from __future__ import annotations
 
 import statistics
+from datetime import datetime
 from typing import Iterable, Optional
 
-from ..modelos import BITS_VALID, CAMPOS_LIMITE, LIMITES_SUGERIDOS, Amostra
+from ..modelos import BITS_VALID, CAMPOS_LIMITE, LIMITES_SUGERIDOS, Amostra, campos_invalidos
+from .detector import CICLOS_LEITURA_INCOMPLETA
 
 # Acima disto o intervalo nao e atribuido a ninguem: a 1 Hz nominal, tres
 # segundos ja sao dois ciclos perdidos.
@@ -468,6 +470,124 @@ COMPARAVEIS = (
     ("saude", "iat_max", "Temperatura máxima do ar", "°C", 0, None),
     ("qualidade", "taxa_hz", "Taxa de amostragem", "Hz", 2, None),
 )
+
+
+def trechos_sem_leitura(amostras: list[Amostra], inicio: datetime) -> list[dict]:
+    """Os trechos da sessao em que a leitura falhou, para a Analise sombrear.
+
+    O evento so marca o instante em que nasceu; o fim do trecho nao esta
+    gravado em lugar nenhum, e e daqui que ele sai. Dois tipos, com as
+    mesmas regras que criam os eventos:
+
+    - `LEITURA_INCOMPLETA`: `CICLOS_LEITURA_INCOMPLETA` ou mais amostras
+      seguidas com algum campo invalido (a regra do detector). Vai da
+      primeira a ultima delas, com a uniao dos campos que faltaram;
+    - `PERDA_CONEXAO`: intervalo entre duas amostras maior que
+      `DT_MAXIMO_S` - os ciclos que nem chegaram.
+
+    O tempo e o do eixo da Analise: `recebida_em` menos o inicio da
+    sessao, em segundos. Lista vazia quando a serie nao falhou.
+    """
+    def _s(a: Amostra) -> float:
+        return round((a.recebida_em - inicio).total_seconds(), 3)
+
+    trechos: list[dict] = []
+    seguidas: list[Amostra] = []
+
+    def _fechar() -> None:
+        if len(seguidas) >= CICLOS_LEITURA_INCOMPLETA:
+            campos = sorted({c for a in seguidas for c in campos_invalidos(a.valid)})
+            trechos.append({
+                "tipo": "LEITURA_INCOMPLETA",
+                "inicio_s": _s(seguidas[0]),
+                "fim_s": _s(seguidas[-1]),
+                "campos": campos,
+            })
+        seguidas.clear()
+
+    for anterior, a in zip([None, *amostras], amostras):
+        if anterior is not None:
+            buraco = (a.recebida_em - anterior.recebida_em).total_seconds()
+            if buraco > DT_MAXIMO_S:
+                # O buraco interrompe a sequencia: ciclo que nao chegou nao
+                # e ciclo incompleto.
+                _fechar()
+                trechos.append({
+                    "tipo": "PERDA_CONEXAO",
+                    "inicio_s": _s(anterior),
+                    "fim_s": _s(a),
+                    "campos": [],
+                })
+        if a.completa():
+            _fechar()
+        else:
+            seguidas.append(a)
+    _fechar()
+    return sorted(trechos, key=lambda x: x["inicio_s"])
+
+
+# Por tipo de evento anomalo: o campo, o limite que o disparou e se o
+# episodio e de SUBIDA (acima do limite) ou de descida (bateria). A
+# condicao e a mesma do detector, sem a margem de rearme: o episodio acaba
+# quando o valor volta para dentro do limite, nao quando o alarme rearma.
+EPISODIOS = {
+    "SHIFT_LIGHT": ("rpm", "shift_light_rpm", True),
+    "RPM_ALTO": ("rpm", "rpm_alto", True),
+    "TEMP_ALTA": ("ect", "temp_alta_c", True),
+    "BATERIA_BAIXA": ("vbat", "vbat_baixa", False),
+}
+
+
+def detalhar_eventos(amostras: list[Amostra], eventos: list, limites: Optional[dict]) -> dict:
+    """Valor, pico e duracao de cada evento anomalo, por id do evento.
+
+    O evento so guarda o instante e a mensagem. Daqui sai, sobre a serie e
+    os limites DA SESSAO:
+
+    - `valor`: o do campo na amostra que disparou (o evento e carimbado com
+      a hora dela, entao a busca e exata);
+    - `pico`: o maior valor do episodio - na bateria, o menor;
+    - `duracao_s`: do disparo ate a primeira amostra valida que volta para
+      dentro do limite, pelo `t_ms`. Amostra com o campo invalido nao conta
+      nem encerra. Se a serie acaba, ou um buraco maior que `DT_MAXIMO_S`
+      interrompe, a duracao e None: o fim nao foi medido.
+
+    Evento sem amostra correspondente sai com os tres None. Os de rotina e
+    os de qualidade ficam de fora - o trecho deles ja vem em
+    `trechos_sem_leitura`.
+    """
+    lim = _limites_efetivos(limites)
+    indice = {a.recebida_em: i for i, a in enumerate(amostras)}
+    detalhes: dict = {}
+    for e in eventos:
+        tipo = getattr(e.tipo, "value", e.tipo)
+        if tipo not in EPISODIOS:
+            continue
+        campo, chave, subida = EPISODIOS[tipo]
+        limite = lim[chave]
+        dentro = (lambda v: v < limite) if subida else (lambda v: v > limite)
+        i = indice.get(e.criado_em)
+        if i is None or not amostras[i].valido(campo):
+            detalhes[e.id] = {"valor": None, "pico": None, "duracao_s": None}
+            continue
+
+        valor = getattr(amostras[i], campo)
+        pico = valor
+        duracao = None
+        anterior = amostras[i]
+        for a in amostras[i + 1:]:
+            if _dt(anterior, a) is None:
+                break
+            anterior = a
+            if not a.valido(campo):
+                continue
+            v = getattr(a, campo)
+            if dentro(v):
+                duracao = round((a.t_ms - amostras[i].t_ms) / 1000.0, 1)
+                break
+            pico = max(pico, v) if subida else min(pico, v)
+        detalhes[e.id] = {"valor": valor, "pico": pico, "duracao_s": duracao}
+    return detalhes
 
 
 def comparar(lado_a: dict, lado_b: dict) -> list[dict]:

@@ -21,10 +21,32 @@ export function paraData(iso) {
   A placa e guardada normalizada (maiuscula, sem separador). O hifen so
   aparece na exibicao, e so no padrao antigo de tres letras e quatro
   numeros - a placa Mercosul (ABC1D23) se escreve sem separador.
+
+  Funcao UNICA de exibicao: toda tela que mostra placa passa por aqui. O
+  PDF tem a gemea em Python (`exportador._placa_exibida`); o nome do
+  arquivo baixado continua com a placa normalizada, sem hifen.
 */
-export function placa(valor) {
+export function formatarPlaca(valor) {
   if (!valor) return "";
   return /^[A-Z]{3}[0-9]{4}$/.test(valor) ? `${valor.slice(0, 3)}-${valor.slice(3)}` : valor;
+}
+
+/*
+  Mascara do campo de placa enquanto se digita: maiuscula, so letra e
+  digito (hifen e espaco digitados somem) e no maximo sete. Nao valida o
+  formato - quem decide e o 422 do backend; isto so evita digitar demais.
+*/
+export function mascaraPlaca(digitado) {
+  return (digitado || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 7);
+}
+
+/** Ano do carro como no documento: "1996/1997" (fabricacao/modelo). */
+export function anoVeiculo(veiculo) {
+  if (!veiculo?.ano_modelo) return "";
+  return `${veiculo.ano_fabricacao}/${veiculo.ano_modelo}`;
 }
 
 /*
@@ -46,10 +68,46 @@ export function milhar(n) {
 }
 
 export function quilometragem(km) {
-  // Zero aqui e quem nao preencheu, nao um carro com 0 km: devolve vazio
-  // para o cartao dizer "nao informado".
-  if (!km) return "";
+  // Nulo e quem nao preencheu: devolve vazio para o cartao dizer "nao
+  // informado". Zero e zero km - desde a migration 0011 os dois sao
+  // diferentes, e um carro novo mostra "0 km".
+  if (km === null || km === undefined) return "";
   return `${milhar(km)} km`;
+}
+
+/*
+  O campo de km enquanto se digita: so digitos, com o separador de milhar
+  ("16000" vira "16.000"). `numeroDeMilhar` le de volta - vazio e null,
+  que e "nao informado", e nao zero.
+*/
+export function mascaraMilhar(digitado) {
+  const digitos = String(digitado ?? "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  return digitos ? Number(digitos).toLocaleString("pt-BR") : "";
+}
+
+export function numeroDeMilhar(texto) {
+  const digitos = String(texto ?? "").replace(/\D/g, "");
+  return digitos ? Number(digitos) : null;
+}
+
+/*
+  Os limites numa linha curta, para o Ao vivo. `completo` falso da so os
+  dois de giro que a barra marca ("Shift 5.800 rpm · giro alto 6.200
+  rpm"); verdadeiro, os seis, para o cabecalho da sessao em curso. So
+  formata: os valores chegam prontos (do inicio-sessao ou do status).
+*/
+export function resumoLimites(limites, completo = false) {
+  if (!limites) return "";
+  const n = (campo) => milhar(limites[campo]);
+  const giro = [`Shift ${n("shift_light_rpm")} rpm`, `giro alto ${n("rpm_alto")} rpm`];
+  if (!completo) return giro.join(" · ");
+  return [
+    ...giro,
+    `marcha lenta ${n("rpm_marcha_lenta")} rpm`,
+    `operação ${n("ect_operacao_c")} °C`,
+    `temp. alta ${n("temp_alta_c")} °C`,
+    `bateria ${n("vbat_baixa")} V`,
+  ].join(" · ");
 }
 
 /** Data e hora curtas, para tabela e cabecalho ("09/09/2026 · 13:32"). */
@@ -108,6 +166,43 @@ export const ROTULO_EVENTO = {
   PERDA_CONEXAO: "Perda de conexão",
   LEITURA_INCOMPLETA: "Leitura incompleta",
 };
+
+/*
+  Rotulos dos tres enums do veiculo. A ordem das chaves e a ordem das
+  opcoes no formulario. Os valores sao os do backend (`modelos/enums.py`);
+  quem recusa valor fora da lista e o 422 de la.
+*/
+export const ROTULO_COMBUSTIVEL = {
+  GASOLINA: "Gasolina",
+  ETANOL: "Etanol",
+  FLEX: "Flex",
+  DIESEL: "Diesel",
+  GNV: "GNV",
+  HIBRIDO: "Híbrido",
+};
+
+export const ROTULO_CAMBIO = {
+  MANUAL: "Manual",
+  AUTOMATICO: "Automático",
+  AUTOMATIZADO: "Automatizado",
+  CVT: "CVT",
+};
+
+// O protocolo nao e campo: e consequencia do perfil, e vai no rotulo.
+export const ROTULO_PERFIL_ECU = {
+  OBD2_GENERICO: "OBD-II genérico",
+  SIEMENS_MS41_DS2: "Siemens MS41 (DS2)",
+};
+
+/*
+  O rotulo de um desses enums, ou "" quando o carro nao tem o valor - carro
+  cadastrado antes deles existirem. Vazio e nao "Nao informado" para quem
+  chama decidir como escrever a ausencia (o cartao do detalhe ja escreve
+  "não informado" sozinho).
+*/
+export function rotulo(mapa, valor) {
+  return (valor && mapa[valor]) || "";
+}
 
 /** mm:ss ou h:mm:ss, para eixo de grafico e cronometro de gravacao.
  *  Curto de proposito: vai repetido embaixo do desenho. */

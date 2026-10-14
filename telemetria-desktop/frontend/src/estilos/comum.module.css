@@ -180,6 +180,13 @@
   margin-left: auto;
 }
 
+/* Botao menor, para acao secundaria dentro de um card (o "Ver sessão
+   inteira" da barra de zoom da Analise). */
+.botao-compacto {
+  padding: 6px 14px;
+  font-size: 14px;
+}
+
 /* Icone da lucide dentro do botao: herda currentColor do proprio botao. */
 .botao-icone {
   flex: none;
@@ -342,6 +349,24 @@
   outline-offset: 2px;
 }
 
+/* Campo de varias linhas (as notas da sessao): a `.entrada` tem altura
+   de uma linha; esta variante cresce com o texto. */
+.entrada-area {
+  height: auto;
+  min-height: 110px;
+  padding: 14px 16px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* Somente leitura (os limites vindos da ultima sessao ou dos sugeridos):
+   o valor continua legivel, mas sem cara de caixa para digitar. */
+.entrada:read-only {
+  background: transparent;
+  color: var(--apagado);
+  cursor: default;
+}
+
 .selecao {
   height: 56px;
   padding: 0 14px;
@@ -353,6 +378,21 @@
   font-size: 17px;
   cursor: pointer;
   max-width: 220px;
+}
+
+.selecao:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Campo recusado pelo 422 do backend: borda e a frase embaixo. */
+.entrada-invalida {
+  border-color: var(--borda-risco);
+}
+
+.campo-erro {
+  font-size: 14px;
+  color: var(--risco);
 }
 
 /* ------------------------------------------------------------- formulario */
@@ -470,6 +510,11 @@
   margin-top: 30px;
 }
 
+/* O detalhe do veiculo: motor, combustivel, cambio, ECU, km e sessoes. */
+.cartoes-seis {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .cartao {
   display: flex;
   flex-direction: column;
@@ -506,6 +551,12 @@
 /* Antes era `.card-grafico`, override do padding. */
 .card-grafico {
   padding: 18px 24px;
+}
+
+/* Os graficos da Analise: quatro empilhados, mais a faixa de eventos e a
+   barra de zoom - todos mais baixos que o card-grafico. */
+.card-grafico-baixo {
+  padding: 12px 20px 10px;
 }
 
 /* Antes era `.exportar .card`, descendente entre modules diferentes. */

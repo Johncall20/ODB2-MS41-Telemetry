@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..contexto import Contexto, obter_contexto
 from ..modelos import PapelUsuario, Usuario, Veiculo
+from ..repositorios import catalogo as repo_catalogo
 from ..repositorios import clientes as repo_clientes
 from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
@@ -17,11 +18,10 @@ from ..repositorios import veiculos as repo_veiculos
 from ..servicos import exportador
 from .auth import usuario_atual
 from .esquemas import (
-    LimitesEntrada,
     VeiculoEntrada,
     cliente_publico,
     eventos_notaveis,
-    problema_nos_limites,
+    veiculo_publico,
 )
 
 router = APIRouter(prefix="/api/veiculos", tags=["veiculos"])
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/veiculos", tags=["veiculos"])
 
 @router.get("")
 def listar(
-    busca: str = Query("", description="casa com placa, modelo ou cliente"),
+    busca: str = Query("", description="casa com placa, marca, modelo ou cliente"),
     ordenar_por: Literal[
         "placa", "modelo", "cliente", "ultima_sessao", "criado_em", "total_sessoes"
     ] = "ultima_sessao",
@@ -50,7 +50,7 @@ def listar(
     """
     return [
         {
-            **linha["veiculo"].model_dump(),
+            **veiculo_publico(linha["veiculo"]),
             "cliente": linha["cliente"],
             "cliente_implicito": linha["cliente_implicito"],
             "total_sessoes": linha["total_sessoes"],
@@ -75,7 +75,7 @@ def detalhe(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
     # sessoes dele continuam sendo consultadas por aqui.
     veiculo = repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True)
     if veiculo is None:
-        raise HTTPException(404, "veiculo nao encontrado")
+        raise HTTPException(404, "veículo não encontrado")
     sessoes = repo_sessoes.listar(usuario.id, veiculo_id=veiculo_id)
     # Mesma montagem da tela de Sessoes: os eventos de todas as sessoes do
     # carro vem numa consulta so, e o resumo sai dos agregados gravados na
@@ -85,7 +85,7 @@ def detalhe(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
         repo_clientes.buscar(veiculo.cliente_id, usuario.id) if veiculo.cliente_id else None
     )
     return {
-        "veiculo": veiculo.model_dump(),
+        "veiculo": veiculo_publico(veiculo),
         "cliente": cliente_publico(cliente) if cliente else None,
         "total_sessoes": len(sessoes),
         "sessoes": [
@@ -113,7 +113,7 @@ def _conflito_de_placa(placa: str, usuario_id: int, ignorando: int | None = None
             409,
             {
                 "erro": "placa_em_uso",
-                "mensagem": f"ja existe um veiculo ativo com a placa {placa}",
+                "mensagem": f"já existe um veículo ativo com a placa {placa}",
                 "veiculo_id": existente.id,
             },
         )
@@ -121,7 +121,7 @@ def _conflito_de_placa(placa: str, usuario_id: int, ignorando: int | None = None
         409,
         {
             "erro": "placa_arquivada",
-            "mensagem": f"o veiculo de placa {placa} foi arquivado",
+            "mensagem": f"o veículo de placa {placa} foi arquivado",
             "veiculo_id": existente.id,
             "arquivado_em": existente.arquivado_em.isoformat(),
         },
@@ -162,12 +162,12 @@ def _dono_do_carro(
         return {"usuario_id": usuario.id, "cliente_id": cliente.id}
 
     if entrada.meus_carros and entrada.cliente_id is not None:
-        raise HTTPException(422, 'escolha um cliente ou "Meus carros", nao os dois')
+        raise HTTPException(422, 'escolha um cliente ou "Meus carros", não os dois')
     if entrada.meus_carros:
         cliente = repo_clientes.implicito_de(usuario.id, usuario.nome)
         return {"usuario_id": usuario.id, "cliente_id": cliente.id}
     if entrada.cliente_id is None:
-        raise HTTPException(422, "escolha o cliente dono do veiculo")
+        raise HTTPException(422, "escolha o cliente dono do veículo")
     if atual is not None and entrada.cliente_id == atual.cliente_id:
         return {"usuario_id": usuario.id, "cliente_id": atual.cliente_id}
 
@@ -175,18 +175,59 @@ def _dono_do_carro(
     # O implicito so entra por `meus_carros`: pelo id ele responde como
     # inexistente, igual as rotas de escrita de cliente.
     if cliente is None or cliente.implicito:
-        raise HTTPException(404, "cliente nao encontrado")
+        raise HTTPException(404, "cliente não encontrado")
     if cliente.arquivado_em is not None:
         raise HTTPException(
             409,
             {
                 "erro": "cliente_arquivado",
-                "mensagem": f"o cliente {cliente.nome} esta arquivado; "
+                "mensagem": f"o cliente {cliente.nome} está arquivado; "
                 "desarquive-o antes de colocar um carro nele",
                 "cliente_id": cliente.id,
             },
         )
     return {"usuario_id": usuario.id, "cliente_id": cliente.id}
+
+
+def _erro_de_campo(campo: str, rotulo: str, mensagem: str) -> HTTPException:
+    """422 no formato do handler de validacao: a frase cai embaixo do campo."""
+    return HTTPException(
+        422,
+        {"erro": "validacao", "mensagem": f"{rotulo}: {mensagem}", "campos": {campo: mensagem}},
+    )
+
+
+def _exigir_modelo(entrada: VeiculoEntrada, usuario: Usuario, atual: Veiculo | None = None) -> None:
+    """O modelo tem de ser do catalogo ou um customizado DESTA conta, e o
+    ano do modelo tem de caber na faixa dele.
+
+    422 no campo `modelo_id`, e nao 404: e um valor invalido do
+    formulario, no mesmo formato dos outros erros de campo. Customizado de
+    outra conta cai aqui igual a um id que nao existe - nao se conta que
+    ele existe.
+
+    A faixa (`Modelo.faixa_anos`) so restringe alem do 1950 ao ano que vem
+    quando o catalogo a conhece. Na edicao, o par modelo + ano que o carro
+    JA TEM e aceito mesmo fora dela: a faixa pode ter chegado depois do
+    cadastro (`--carregar-catalogo`), e sem isso o carro deixaria de poder
+    ser editado ate para trocar a placa.
+    """
+    modelo = repo_catalogo.modelo_visivel(entrada.modelo_id, usuario.id)
+    if modelo is None:
+        raise _erro_de_campo("modelo_id", "modelo", "escolha um modelo da lista")
+    if atual is not None and (atual.modelo_id, atual.ano_modelo) == (
+        entrada.modelo_id,
+        entrada.ano_modelo,
+    ):
+        return
+    de, ate = modelo.faixa_anos()
+    if not de <= entrada.ano_modelo <= ate:
+        raise _erro_de_campo(
+            "ano_modelo",
+            "ano do modelo",
+            f"o {modelo.nome} tem ano de modelo de {de} a {ate}. Se o ano do carro "
+            'não está nessa faixa, use “Não encontrei meu modelo”',
+        )
 
 
 def _campos_do_carro(entrada: VeiculoEntrada, dono: dict) -> dict:
@@ -198,15 +239,16 @@ def _campos_do_carro(entrada: VeiculoEntrada, dono: dict) -> dict:
 @router.post("")
 def criar(entrada: VeiculoEntrada, usuario: Usuario = Depends(usuario_atual)):
     """Cadastra um veiculo. Placa repetida devolve 409, nao 500."""
+    _exigir_modelo(entrada, usuario)
     _conflito_de_placa(entrada.placa, usuario.id)
     campos = _campos_do_carro(entrada, _dono_do_carro(entrada, usuario))
     try:
-        return repo_veiculos.criar(Veiculo(**campos))
+        return veiculo_publico(repo_veiculos.criar(Veiculo(**campos)))
     except IntegrityError:
         # Rede de seguranca do indice unico parcial: pega a corrida entre a
-        # checagem e o insert, e o caso da placa vazia, que a checagem acima
-        # deixa passar porque nao ha o que comparar.
-        raise HTTPException(409, {"erro": "placa_em_uso", "mensagem": "placa ja cadastrada"})
+        # checagem e o insert. Carro sem placa grava NULL, e NULL nao
+        # colide no indice - dois carros sem placa convivem.
+        raise HTTPException(409, {"erro": "placa_em_uso", "mensagem": "placa já cadastrada"})
 
 
 @router.put("/{veiculo_id}")
@@ -222,16 +264,17 @@ def editar(
     """
     atual = repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True)
     if atual is None:
-        raise HTTPException(404, "veiculo nao encontrado")
+        raise HTTPException(404, "veículo não encontrado")
+    _exigir_modelo(entrada, usuario, atual)
     _conflito_de_placa(entrada.placa, usuario.id, ignorando=veiculo_id)
     campos = _campos_do_carro(entrada, _dono_do_carro(entrada, usuario, atual))
     try:
         veiculo = repo_veiculos.editar(veiculo_id, usuario.id, campos)
     except IntegrityError:
-        raise HTTPException(409, {"erro": "placa_em_uso", "mensagem": "placa ja cadastrada"})
+        raise HTTPException(409, {"erro": "placa_em_uso", "mensagem": "placa já cadastrada"})
     if veiculo is None:
-        raise HTTPException(404, "veiculo nao encontrado")
-    return veiculo
+        raise HTTPException(404, "veículo não encontrado")
+    return veiculo_publico(veiculo)
 
 
 @router.delete("/{veiculo_id}")
@@ -246,12 +289,12 @@ def arquivar(
     presa a um veiculo fora das listas.
     """
     if repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True) is None:
-        raise HTTPException(404, "veiculo nao encontrado")
+        raise HTTPException(404, "veículo não encontrado")
 
     if ctx.gravador.sessao_id is not None:
         ativa = repo_sessoes.buscar(ctx.gravador.sessao_id, usuario.id)
         if ativa is not None and ativa.veiculo_id == veiculo_id:
-            raise HTTPException(409, "este veiculo esta gravando uma sessao agora")
+            raise HTTPException(409, "este veículo está gravando uma sessão agora")
 
     quando = repo_veiculos.arquivar(veiculo_id, usuario.id)
     return {
@@ -278,9 +321,9 @@ def restaurar(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
     """
     veiculo = repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True)
     if veiculo is None:
-        raise HTTPException(404, "veiculo nao encontrado")
+        raise HTTPException(404, "veículo não encontrado")
     if veiculo.arquivado_em is None:
-        return veiculo
+        return veiculo_publico(veiculo)
 
     if veiculo.cliente_id is not None:
         cliente = repo_clientes.buscar(veiculo.cliente_id, usuario.id)
@@ -289,7 +332,7 @@ def restaurar(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
                 409,
                 {
                     "erro": "cliente_arquivado",
-                    "mensagem": f"o cliente {cliente.nome} esta arquivado; "
+                    "mensagem": f"o cliente {cliente.nome} está arquivado; "
                     "desarquive o cliente ou mova o carro para outro antes de restaurar",
                     "cliente_id": cliente.id,
                 },
@@ -297,7 +340,7 @@ def restaurar(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
 
     em_uso = {
         "erro": "placa_em_uso",
-        "mensagem": f"ja existe um veiculo ativo com a placa {veiculo.placa}; "
+        "mensagem": f"já existe um veículo ativo com a placa {veiculo.placa}; "
         "arquive-o ou troque a placa deste antes de restaurar",
     }
     ativo = repo_veiculos.buscar_por_placa(veiculo.placa, usuario.id, incluir_arquivados=False)
@@ -306,44 +349,36 @@ def restaurar(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
     try:
         repo_veiculos.restaurar(veiculo_id, usuario.id)
     except IntegrityError:
-        # A corrida entre a checagem e o UPDATE, e a placa vazia, que a
-        # busca por placa nao compara.
+        # A corrida entre a checagem e o UPDATE.
         raise HTTPException(409, em_uso)
-    return repo_veiculos.buscar(veiculo_id, usuario.id)
+    return veiculo_publico(repo_veiculos.buscar(veiculo_id, usuario.id))
 
 
-def _exigir_veiculo(veiculo_id: int, usuario_id: int) -> None:
-    """404 se o carro nao existe OU nao e desta conta. Arquivado passa: e
-    por esta tela que se restaura o veiculo, e os limites dele continuam
-    sendo mostrados.
-
-    E esta checagem que autoriza o `repositorios/limites.py` a trabalhar
-    so por `veiculo_id`, sem filtrar por dono."""
-    if repo_veiculos.buscar(veiculo_id, usuario_id, incluir_arquivados=True) is None:
-        raise HTTPException(404, "veiculo nao encontrado")
-
-
-@router.get("/{veiculo_id}/limites")
-def ler_limites(veiculo_id: int, usuario: Usuario = Depends(usuario_atual)):
-    """Os seis limites de alerta do carro. Sao os unicos que existem."""
-    _exigir_veiculo(veiculo_id, usuario.id)
-    return repo_limites.do_veiculo(veiculo_id)
-
-
-@router.put("/{veiculo_id}/limites")
-def gravar_limites(
-    veiculo_id: int, novos: LimitesEntrada, usuario: Usuario = Depends(usuario_atual)
+@router.get("/{veiculo_id}/inicio-sessao")
+def inicio_sessao(
+    veiculo_id: int,
+    usuario: Usuario = Depends(usuario_atual),
+    ctx: Contexto = Depends(obter_contexto),
 ):
-    """Grava os seis limites do carro.
+    """De onde partir os limites da proxima gravacao deste carro.
 
-    Nao afeta a gravacao em curso: a sessao levou o snapshot dos limites
-    no inicio, de proposito.
+    `ultima_sessao`: os seis limites da sessao mais recente do carro com
+    snapshot, com o id e a data dela - ou null, se ele ainda nao tem. Nao
+    importa ha quanto tempo foi. `sugeridos`: as constantes, as mesmas de
+    `GET /api/limites/sugeridos`. `perfil_ecu`: o aviso (ou a recusa) do
+    perfil da ECU contra a fonte deste processo, ou null - a tela mostra
+    a frase e, com `bloqueia`, nao deixa gravar.
+
+    Nao ha limite do carro: o que vale e o que se escolhe ao iniciar, e
+    ele fica gravado so na sessao. A checagem de posse aqui e o que
+    autoriza o `repositorios/limites.py` a trabalhar so por `veiculo_id`.
     """
-    _exigir_veiculo(veiculo_id, usuario.id)
-    valores = novos.model_dump()
-
-    problema = problema_nos_limites(valores)
-    if problema is not None:
-        raise HTTPException(422, {"erro": "limites_invalidos", "mensagem": problema})
-
-    return repo_limites.gravar_do_veiculo(veiculo_id, valores)
+    veiculo = repo_veiculos.buscar(veiculo_id, usuario.id, incluir_arquivados=True)
+    if veiculo is None:
+        raise HTTPException(404, "veículo não encontrado")
+    return {
+        "ultima_sessao": repo_limites.da_ultima_sessao(veiculo_id),
+        "sugeridos": repo_limites.sugeridos(),
+        "quilometragem": veiculo.quilometragem,
+        "perfil_ecu": ctx.compatibilidade(veiculo.perfil_ecu),
+    }

@@ -19,6 +19,7 @@ import json
 import re
 import unicodedata
 from typing import Sequence
+from xml.sax.saxutils import escape
 
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
@@ -76,13 +77,23 @@ def _identificador(sessao_id: int, veiculo) -> str:
         placa = _PERMITIDOS.sub("", _sem_acento(veiculo.placa or ""))
         if placa:
             return placa
-        carro = _kebab(f"{veiculo.marca or ''} {veiculo.modelo or ''}")
+        carro = _kebab(veiculo.descricao())
         if carro:
             return carro
     # O id PEDIDO, nao o da sessao carregada: quando ela nao existe ainda
     # assim o nome diz o que foi pedido, em vez de um zero que nao aponta
     # para nada.
     return f"sessao{sessao_id}"
+
+
+def _placa_exibida(placa: str | None) -> str | None:
+    """A placa como gente le, na capa do PDF: "ABC-1234" no padrao antigo,
+    "ABC1D23" no Mercosul, que se escreve sem separador. Gemea do
+    `formatarPlaca()` do frontend - o nome do ARQUIVO continua com a
+    placa normalizada, sem hifen."""
+    if not placa:
+        return None
+    return f"{placa[:3]}-{placa[3:]}" if re.fullmatch(r"[A-Z]{3}[0-9]{4}", placa) else placa
 
 
 def _momento_local(sessao) -> str:
@@ -243,7 +254,20 @@ def para_json(sessao_id: int) -> str:
     veiculo = repo_veiculos.buscar(sessao.veiculo_id, None, incluir_arquivados=True) if sessao else None
     dados = resumo(sessao_id)
     pacote = {
-        "veiculo": veiculo.model_dump() if veiculo else None,
+        # Marca e modelo pelo NOME do catalogo, como a tela mostra: o id
+        # sozinho nao diria nada a quem abre o arquivo fora do app. Os dois
+        # continuam como dado (a marca pode ser "Outra"); `descricao` e o
+        # nome como as telas escrevem.
+        "veiculo": (
+            {
+                **veiculo.model_dump(),
+                "marca": veiculo.nome_marca,
+                "modelo": veiculo.nome_modelo,
+                "descricao": veiculo.descricao(),
+            }
+            if veiculo
+            else None
+        ),
         "sessao": sessao.model_dump() if sessao else None,
         "resumo": dados,
         # A serie ja esta carregada, entao as metricas saem de graca.
@@ -271,13 +295,13 @@ SERIES_PDF = (
 )
 
 ROTULO_EVENTO_PDF = {
-    "INICIO_SESSAO": "Inicio da sessao",
-    "FIM_SESSAO": "Fim da sessao",
+    "INICIO_SESSAO": "Início da sessão",
+    "FIM_SESSAO": "Fim da sessão",
     "SHIFT_LIGHT": "Shift light",
     "RPM_ALTO": "Giro acima do limite",
     "TEMP_ALTA": "Temperatura alta",
     "BATERIA_BAIXA": "Bateria baixa",
-    "PERDA_CONEXAO": "Perda de conexao",
+    "PERDA_CONEXAO": "Perda de conexão",
     "LEITURA_INCOMPLETA": "Leitura incompleta",
 }
 
@@ -393,7 +417,7 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
 
     sessao = repo_sessoes.buscar(sessao_id, None)
     if sessao is None:
-        raise ValueError(f"sessao {sessao_id} nao encontrada")
+        raise ValueError(f"sessão {sessao_id} não encontrada")
     veiculo = repo_veiculos.buscar(sessao.veiculo_id, None, incluir_arquivados=True)
     amostras = repo_amostras.listar(sessao_id)
     eventos = sorted(repo_sessoes.listar_eventos(sessao_id), key=lambda e: e.id)
@@ -405,8 +429,9 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
     identificacao = " · ".join(
         p
         for p in (
-            veiculo.placa if veiculo else None,
-            f"{veiculo.marca} {veiculo.modelo}" if veiculo else None,
+            _placa_exibida(veiculo.placa) if veiculo else None,
+            f"{veiculo.descricao()} "
+            f"{veiculo.ano_fabricacao}/{veiculo.ano_modelo}" if veiculo else None,
             inicio.strftime("%d/%m/%Y %H:%M"),
         )
         if p
@@ -420,7 +445,7 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
         rightMargin=42,
         topMargin=42,
         bottomMargin=42,
-        title=f"Relatorio da sessao {sessao_id}",
+        title=f"Relatório da sessão {sessao_id}",
         author="Telemetria DS2/MS41",
     )
     estilos = getSampleStyleSheet()
@@ -448,15 +473,28 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
     )
 
     largura = doc.width
-    partes = [Paragraph("Relatorio de sessao", est_titulo), Paragraph(identificacao, est_legenda)]
+    partes = [Paragraph("Relatório de sessão", est_titulo), Paragraph(identificacao, est_legenda)]
+
+    # Km e notas sao da sessao, nao de uma secao escolhivel: vao na capa,
+    # e SO quando preenchidos - campo vazio no PDF seria ruido. As notas
+    # mantem as quebras de linha; o texto e escapado porque o Paragraph do
+    # reportlab le marcacao, e uma nota com "<" quebraria o relatorio.
+    if sessao.km is not None:
+        km = f"{sessao.km:,}".replace(",", ".")
+        partes.append(Paragraph(f"Quilometragem: {km} km", est_legenda))
+    if sessao.observacao:
+        partes += [
+            Paragraph("Notas", est_secao),
+            Paragraph(escape(sessao.observacao).replace(chr(10), "<br/>"), estilos["Normal"]),
+        ]
 
     if "resumo" in escolhidas:
         linhas = [
-            ("Duracao", _mmss(dados.get("duracao_s"))),
-            ("RPM maximo", _num(dados.get("rpm_pico"))),
-            ("Velocidade maxima", _num(dados.get("vss_pico"), "km/h")),
-            ("Temperatura maxima", _num(dados.get("ect_pico"), "°C")),
-            ("Tensao minima", _num(dados.get("vbat_min"), "V")),
+            ("Duração", _mmss(dados.get("duracao_s"))),
+            ("RPM máximo", _num(dados.get("rpm_pico"))),
+            ("Velocidade máxima", _num(dados.get("vss_pico"), "km/h")),
+            ("Temperatura máxima", _num(dados.get("ect_pico"), "°C")),
+            ("Tensão mínima", _num(dados.get("vbat_min"), "V")),
             ("Amostras", _num(dados.get("amostras"))),
             ("Amostras completas", _num(dados.get("amostras_completas"))),
             ("Integridade", _num(dados.get("integridade_pct"), "%")),
@@ -480,14 +518,14 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
             Paragraph("Resumo", est_secao),
             tabela,
             Paragraph(
-                "Integridade e a fracao de amostras em que a central respondeu os sete "
-                "campos. Onde a leitura falhou o valor nao foi estimado.",
+                "Integridade é a fração de amostras em que a central respondeu os sete "
+                "campos. Onde a leitura falhou, o valor não foi estimado.",
                 est_nota,
             ),
         ]
 
     if "graficos" in escolhidas:
-        partes.append(Paragraph("Graficos", est_secao))
+        partes.append(Paragraph("Gráficos", est_secao))
         for campo, nome, unidade in SERIES_PDF:
             png = _png_da_serie(campo, nome, unidade, amostras, inicio, largura)
             if png is None:
@@ -496,7 +534,7 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
                 partes.append(Paragraph(nome, est_secao_menor))
                 partes.append(
                     Paragraph(
-                        "Nenhuma amostra desta sessao trouxe leitura valida deste campo.",
+                        "Nenhuma amostra desta sessão trouxe leitura válida deste campo.",
                         est_legenda,
                     )
                 )
@@ -513,8 +551,8 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
             partes.append(Spacer(1, 12))
         partes.append(
             Paragraph(
-                "A linha e interrompida nos ciclos em que a central nao respondeu aquele "
-                "campo. Trecho vazio significa ausencia de leitura, nao valor constante.",
+                "A linha é interrompida nos ciclos em que a central não respondeu aquele "
+                "campo. Trecho vazio significa ausência de leitura, não valor constante.",
                 est_nota,
             )
         )
@@ -522,7 +560,7 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
     if "eventos" in escolhidas:
         partes.append(Paragraph("Eventos", est_secao))
         if not eventos:
-            partes.append(Paragraph("Nenhum evento registrado nesta sessao.", est_legenda))
+            partes.append(Paragraph("Nenhum evento registrado nesta sessão.", est_legenda))
         else:
             linhas = [("Tempo", "Evento", "Detalhe")]
             for e in eventos:
@@ -579,7 +617,7 @@ def para_pdf(sessao_id: int, secoes: Sequence[str] = SECOES_PADRAO) -> bytes:
         partes += [
             tabela,
             Paragraph(
-                "Celula vazia = a central nao respondeu aquele campo naquele ciclo.", est_nota
+                "Célula vazia = a central não respondeu aquele campo naquele ciclo.", est_nota
             ),
         ]
 

@@ -12,25 +12,6 @@
   color: var(--risco);
 }
 
-.graficos {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.rpm {
-  color: var(--ambar);
-}
-
-.vss {
-  color: var(--apagado);
-}
-
-.ect {
-  color: var(--risco);
-}
-
 /* Separador da faixa de metricas, abaixo dos graficos. */
 .secao {
   margin: 30px 0 0;
@@ -38,3 +19,4 @@
   font-weight: 400;
   color: var(--texto);
 }
+

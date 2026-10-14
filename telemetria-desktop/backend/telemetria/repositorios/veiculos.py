@@ -18,9 +18,9 @@ from sqlmodel import select
 
 from ..banco import sessao_db
 from ..modelos import (
-    LIMITES_SUGERIDOS,
     Cliente,
-    LimitesVeiculo,
+    Marca,
+    Modelo,
     Sessao,
     Veiculo,
     agora,
@@ -112,7 +112,11 @@ def listar_para_tela(
         )
         .join(Cliente, Cliente.id == Veiculo.cliente_id, isouter=True)
         .join(Sessao, Sessao.veiculo_id == Veiculo.id, isouter=True)
-        .group_by(Veiculo.id, Cliente.nome, Cliente.implicito)
+        # Marca e modelo so para a busca e a ordenacao, que sao pelo NOME
+        # do catalogo. O objeto do modelo chega pelo selectin do Veiculo.
+        .join(Modelo, Modelo.id == Veiculo.modelo_id)
+        .join(Marca, Marca.id == Modelo.marca_id)
+        .group_by(Veiculo.id, Cliente.nome, Cliente.implicito, Modelo.nome, Marca.nome)
     )
     consulta = _do_usuario(consulta, usuario_id)
     if cliente_id is not None:
@@ -134,7 +138,8 @@ def listar_para_tela(
         placa_alvo = f"%{normalizar_placa(termo)}%"
         consulta = consulta.where(
             func.lower(Veiculo.placa).like(func.lower(placa_alvo))
-            | func.lower(Veiculo.modelo).like(alvo)
+            | func.lower(Modelo.nome).like(alvo)
+            | func.lower(Marca.nome).like(alvo)
             | func.lower(Cliente.nome).like(alvo)
         )
 
@@ -153,7 +158,9 @@ def listar_para_tela(
 
     colunas = {
         "placa": Veiculo.placa,
-        "modelo": Veiculo.modelo,
+        # Marca e modelo juntos, como a linha escreve: "BMW 325i" antes de
+        # "BMW 328i", e nao todos os "325i" de marcas diferentes juntos.
+        "modelo": func.lower(func.concat(Marca.nome, " ", Modelo.nome)),
         # O implicito ("Meus carros" na tela) ordena como texto vazio: fica
         # no topo em A-Z e no fim em Z-A. Ordenar pelo nome dele poria os
         # carros da propria conta no meio dos clientes, pelo nome da pessoa.
@@ -232,12 +239,6 @@ def criar(veiculo: Veiculo) -> Veiculo:
     """
     with sessao_db() as db:
         db.add(veiculo)
-        db.commit()
-        db.refresh(veiculo)
-        # Os limites do carro nascem na MESMA transacao: em dois commits
-        # haveria um instante com veiculo sem limites, e um GET nessa
-        # janela quebraria - os seis campos nao sao mais opcionais.
-        db.add(LimitesVeiculo(veiculo_id=veiculo.id, **LIMITES_SUGERIDOS))
         db.commit()
         db.refresh(veiculo)
         return veiculo

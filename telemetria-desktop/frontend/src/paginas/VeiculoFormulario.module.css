@@ -41,3 +41,77 @@
   border-radius: 8px;
   background: var(--chip-ambar);
 }
+
+/*
+  O bloco do modelo: o combobox e, embaixo dele, o "Nao encontrei meu
+  modelo" aberto - o nome a criar e os dois botoes. Fica numa coluna so,
+  para o campo novo aparecer colado ao combobox que o abriu.
+*/
+.modelo-bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.novo-modelo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: var(--realce);
+}
+
+.novo-modelo-acoes {
+  display: flex;
+  gap: 12px;
+}
+
+/* Texto de apoio embaixo do campo "Marca e modelo" da marca Outra. */
+.detalhe-campo {
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+/*
+  "Você quis dizer?": modelos do catalogo parecidos com o nome que se ia
+  criar. Botoes de texto, para escolher um em vez de duplicar.
+*/
+.sugestoes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sugestoes-titulo {
+  font-size: 14px;
+  color: var(--apagado);
+}
+
+.sugestoes-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sugestao {
+  padding: 8px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sugestao:hover,
+.sugestao:focus-visible {
+  border-color: var(--ambar);
+  color: var(--ambar);
+}

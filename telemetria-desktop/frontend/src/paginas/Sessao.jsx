@@ -2,14 +2,16 @@
   Tela de uma sessao recem-encerrada: o resumo do que acabou de ser
   gravado, com o caminho para a analise e a exportacao.
 */
-import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { dataHora, duracao, milhar, placa } from "../formato.js";
+import { dataHora, duracao, milhar, formatarPlaca } from "../formato.js";
 import { Eventos } from "../componentes/telemetria/Eventos.jsx";
+import { segundosDesde } from "../componentes/telemetria/graficoApoio.js";
+import { aplicarEdicao, KmENotas } from "../componentes/telemetria/KmENotas.jsx";
 import { Check } from "lucide-react";
 import { Chip } from "../componentes/ui/Chip.jsx";
-import { Aviso } from "../componentes/ui/Aviso.jsx";
+import { FalhaDeCarga } from "../componentes/ui/FalhaDeCarga.jsx";
+import { useCarga } from "../componentes/ui/useCarga.js";
 import c from "../estilos/comum.module.css";
 import s from "./Sessao.module.css";
 
@@ -21,26 +23,22 @@ import s from "./Sessao.module.css";
 export function Sessao() {
   const { id } = useParams();
   const navegar = useNavigate();
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState("");
+  const { dados, setDados, falha, tentarDeNovo } = useCarga(id, api.lerSessao);
 
-  useEffect(() => {
-    setDados(null);
-    api
-      .lerSessao(id)
-      .then(setDados)
-      .catch((e) => setErro(String(e.message || e)));
-  }, [id]);
-
-  if (erro) return <Aviso>{erro}</Aviso>;
+  if (falha) return <FalhaDeCarga recurso="sessao" falha={falha} aoTentar={tentarDeNovo} />;
   if (!dados) return <p className={c.paginaVazia}>Carregando…</p>;
 
   const { sessao, veiculo, resumo, eventos } = dados;
   const encerrada = sessao.status === "ENCERRADA";
 
+  // O PATCH devolve so o que mudou; a tela troca esses campos no lugar.
+  function aplicar(resposta) {
+    setDados((atual) => aplicarEdicao(atual, resposta));
+  }
+
   const legenda = [
-    placa(veiculo?.placa),
-    veiculo && `${veiculo.marca} ${veiculo.modelo}`,
+    formatarPlaca(veiculo?.placa),
+    veiculo?.descricao,
     dataHora(sessao.iniciada_em),
   ]
     .filter(Boolean)
@@ -89,6 +87,11 @@ export function Sessao() {
           eventos={eventos}
           iniciadaEm={sessao.iniciada_em}
           vazio="Nenhum evento registrado nesta sessão."
+          // Cada evento leva a Analise ja com ele escolhido e o zoom no
+          // trecho dele. O `t` sozinho e o que os links antigos tinham.
+          destino={(e) =>
+            `/sessoes/${id}/analise?evento=${e.id}&t=${Math.round(segundosDesde(e.criado_em, sessao.iniciada_em) ?? 0)}`
+          }
         />
 
         <div className={s.acoes}>
@@ -106,6 +109,18 @@ export function Sessao() {
           </button>
         </div>
       </section>
+
+      {/*
+        Km e notas, editaveis a qualquer momento: abaixo dos dados da
+        sessao, no mesmo card do Ao vivo.
+      */}
+      <KmENotas
+        sessao={sessao}
+        kmDoCarro={veiculo?.quilometragem ?? null}
+        maisRecente={dados.mais_recente}
+        aoSalvar={aplicar}
+        classe={s.dados}
+      />
     </div>
   );
 }

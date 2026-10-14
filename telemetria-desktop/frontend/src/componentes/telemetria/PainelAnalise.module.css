@@ -1,0 +1,133 @@
+/*
+  O painel da Analise: eventos por tipo e qualidade do dado.
+*/
+
+.risco {
+  color: var(--risco);
+}
+
+.alerta {
+  color: var(--ambar);
+}
+
+.bloco {
+  gap: 10px;
+  padding: 18px 18px 14px;
+}
+
+.tipos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tipo {
+  border-radius: 8px;
+}
+
+.tipo-escolhido {
+  background: var(--realce);
+  box-shadow: inset 0 0 0 1px var(--linha);
+}
+
+.tipo-botao {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tipo-botao:hover:not(:disabled) {
+  background: var(--chip-neutro);
+}
+
+/* Tipo sem ocorrencia: continua na lista (dizer zero e informacao), mas
+   apagado e sem clique. */
+.tipo-botao:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.tipo-nome {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.contagem {
+  font-size: 14px;
+  color: var(--apagado);
+  font-variant-numeric: tabular-nums;
+}
+
+.icone {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.detalhe {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 10px 12px;
+}
+
+.navegacao {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seta {
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.seta:hover:not(:disabled) {
+  background: var(--chip-neutro);
+}
+
+.seta:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.posicao {
+  min-width: 64px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--apagado);
+}
+
+.quando {
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+.resumo {
+  font-size: 14px;
+  color: var(--texto);
+}
+
+.nota {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fraco);
+}

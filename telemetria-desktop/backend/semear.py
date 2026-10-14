@@ -93,12 +93,13 @@ from telemetria.modelos import (  # noqa: E402
     Usuario,
     Amostra,
     Evento,
-    LimitesVeiculo,
+    Limites,
     Sessao,
     TipoEvento,
     Veiculo,
 )
 from telemetria.repositorios import amostras as repo_amostras  # noqa: E402
+from telemetria.repositorios import catalogo as repo_catalogo  # noqa: E402
 from telemetria.repositorios import clientes as repo_clientes  # noqa: E402
 from telemetria.repositorios import usuarios as repo_usuarios  # noqa: E402
 from telemetria.repositorios import limites as repo_limites  # noqa: E402
@@ -106,6 +107,19 @@ from telemetria.repositorios import sessoes as repo_sessoes  # noqa: E402
 from telemetria.repositorios import veiculos as repo_veiculos  # noqa: E402
 from telemetria.servicos.detector import DetectorEventos  # noqa: E402
 from telemetria.servicos import autenticacao  # noqa: E402
+
+# ------------------------------------------------------------ as notas
+
+# O que um mecanico escreve numa sessao. Uma tem varias linhas, para a
+# tela e o PDF mostrarem que a quebra de linha fica.
+NOTAS = [
+    "Troca de velas antes da sessão.",
+    "Cliente reclamou de falha em alta; rodei para reproduzir.",
+    "Depois da troca do sensor de temperatura.",
+    "Pista molhada, poucas arrancadas.",
+    "Revisão dos 10 mil:\n- óleo e filtro\n- filtro de ar\n- correia conferida",
+    "Bateria nova instalada na véspera.",
+]
 
 # ------------------------------------------------------------ os veiculos
 
@@ -115,8 +129,10 @@ from telemetria.servicos import autenticacao  # noqa: E402
 # ordenacao por "ultima sessao" e o filtro "nunca usado" dizerem algo.
 PERFIS = [
     {
-        "veiculo": dict(marca="BMW", modelo="325i", ano=1995, placa="ABC1234",
-                        motor="M50B25", quilometragem=248_500),
+        "veiculo": dict(marca="BMW", modelo="325i", ano_modelo=1995, ano_fabricacao=1995,
+                        placa="ABC1234", motor="M50B25", quilometragem=248_500,
+                        combustivel="GASOLINA", cambio="MANUAL",
+                        perfil_ecu="SIEMENS_MS41_DS2"),
         "cliente": "Leonardo Caloni",
         "sessoes": 22,
         "temperamento": "pista",
@@ -132,16 +148,19 @@ PERFIS = [
         "dias_do_ajuste": 90,
     },
     {
-        "veiculo": dict(marca="BMW", modelo="320i", ano=1997, placa="DEF5678",
-                        motor="M52B20", quilometragem=312_000),
+        "veiculo": dict(marca="BMW", modelo="320i", ano_modelo=1997, ano_fabricacao=1996,
+                        placa="DEF5678", motor="M52B20", quilometragem=312_000,
+                        combustivel="GASOLINA", cambio="AUTOMATICO",
+                        perfil_ecu="SIEMENS_MS41_DS2"),
         "cliente": "Oficina Zampieri",
         "sessoes": 14,
         "temperamento": "passeio",
         "limites": None,          # fica com os sugeridos
     },
     {
-        "veiculo": dict(marca="Volkswagen", modelo="Gol GTI", ano=1994, placa="GHI9012",
-                        motor="AP2000 16v", quilometragem=189_300),
+        "veiculo": dict(marca="Volkswagen", modelo="Gol GTi 2.0", ano_modelo=1994,
+                        ano_fabricacao=1994, placa="GHI9012", motor="AP2000 16v",
+                        quilometragem=189_300, combustivel="GASOLINA", cambio="MANUAL"),
         "cliente": "Marcos Pereira",
         "sessoes": 11,
         "temperamento": "bateria-fraca",
@@ -149,8 +168,9 @@ PERFIS = [
                         vbat_baixa=12.2, rpm_marcha_lenta=1100, ect_operacao_c=90),
     },
     {
-        "veiculo": dict(marca="Fiat", modelo="Uno Turbo", ano=1996, placa="JKL3456",
-                        motor="1.4 Turbo", quilometragem=97_800),
+        "veiculo": dict(marca="Fiat", modelo="Uno Turbo 1.4 i.e. 2p", ano_modelo=1996,
+                        ano_fabricacao=1996, placa="JKL3E56", motor="1.4 Turbo",
+                        quilometragem=97_800, combustivel="GASOLINA", cambio="MANUAL"),
         "cliente": "Preparadora Baixada",
         "sessoes": 9,
         "temperamento": "superaquece",
@@ -160,8 +180,13 @@ PERFIS = [
     # Sem placa: exercita o nome de arquivo em kebab-case e a tela que
     # mostra "sem placa".
     {
-        "veiculo": dict(marca="Chevrolet", modelo="Opala Diplomata", ano=1988, placa="",
-                        motor="250-S", quilometragem=421_000),
+        # Modelo CUSTOMIZADO: a FIPE so tem "Opala Diplomata/Diplom.
+        # SLE/SE 4.1/2.5", e o dono escreveu do jeito dele. Exercita o
+        # "Nao encontrei meu modelo" e a marca do customizado nas telas.
+        "veiculo": dict(marca="Chevrolet", modelo="Opala Diplomata 4.1", ano_modelo=1988,
+                        ano_fabricacao=1988, placa=None, motor="250-S",
+                        quilometragem=421_000, combustivel="ETANOL", cambio="AUTOMATICO"),
+        "modelo_customizado": True,
         "cliente": "Antonio Nogueira",
         "sessoes": 2,
         "temperamento": "passeio",
@@ -170,8 +195,11 @@ PERFIS = [
     },
     # Arquivado: tem de sair das listas mas manter o historico acessivel.
     {
-        "veiculo": dict(marca="Ford", modelo="Escort XR3", ano=1992, placa="MNO7890",
-                        motor="1.8i", quilometragem=203_400),
+        # Sem quilometragem cadastrada (NULL, "não informado") - e por isso
+        # as sessoes dele tambem nao tem km.
+        "veiculo": dict(marca="Ford", modelo="Escort XR3 2.0i", ano_modelo=1993,
+                        ano_fabricacao=1993, placa="MNO7890", motor="2.0i",
+                        quilometragem=None, combustivel="GASOLINA", cambio="MANUAL"),
         "cliente": "Cliente antigo",
         "sessoes": 4,
         "temperamento": "passeio",
@@ -389,7 +417,7 @@ def _conferir_esquema() -> None:
             f"         {erro}\n"
             "         O Postgres esta no ar? (docker compose up -d postgres)"
         )
-    faltando = {"veiculo", "sessao", "amostra", "evento", "limitesveiculo"} - tabelas
+    faltando = {"veiculo", "sessao", "amostra", "evento", "marca", "modelo"} - tabelas
     if faltando:
         sys.exit(
             f"[semear] a base de seed nao esta migrada (faltam: {', '.join(sorted(faltando))}).\n"
@@ -403,9 +431,16 @@ def _conferir_vazio(recriar: bool) -> None:
     """Recusa semear por cima de dado que ja esta la.
 
     Com `--recriar`, esvazia as tabelas em vez de apagar arquivo - nao ha
-    mais arquivo para apagar. TRUNCATE ... CASCADE numa tacada so, porque
-    as FKs entre veiculo, sessao, amostra e evento tornam a ordem do
-    DELETE um problema que nao vale ter.
+    mais arquivo para apagar.
+
+    **O catalogo fica.** Por isso nao e mais um `TRUNCATE ... CASCADE` de
+    tudo: `modelo` aponta para `usuario` (o customizado tem dono), e o
+    cascade a partir de `usuario` esvaziaria a tabela `modelo` inteira -
+    as 7 mil linhas da FIPE junto com os customizados, e o banco ficaria
+    sem catalogo ate alguem rodar `--carregar-catalogo`. Entao: TRUNCATE
+    so na arvore da sessao (que nada de fora referencia), DELETE na ordem
+    das FKs do resto, e o customizado sai pelo dono, como na exclusao de
+    conta.
     """
     from sqlalchemy import text
 
@@ -417,14 +452,46 @@ def _conferir_vazio(recriar: bool) -> None:
                 "         Rode com --recriar para esvaziar e refazer."
             )
         if recriar:
-            con.execute(
-                text(
-                    "TRUNCATE veiculo, sessao, amostra, evento, limitesveiculo, "
-                    "cliente, usuario, tokenacesso RESTART IDENTITY CASCADE"
-                )
-            )
+            con.execute(text("TRUNCATE amostra, evento, sessao RESTART IDENTITY"))
+            for comando in (
+                "DELETE FROM veiculo",
+                "DELETE FROM modelo WHERE usuario_id IS NOT NULL",
+                "DELETE FROM cliente",
+                "DELETE FROM tokenacesso",
+                "DELETE FROM usuario",
+            ):
+                con.execute(text(comando))
+            # Os ids recomecam, como o RESTART IDENTITY fazia: a mesma
+            # semente tem de dar o mesmo banco. A sequencia de `modelo` nao:
+            # o catalogo continua la.
+            for tabela in ("veiculo", "cliente", "tokenacesso", "usuario"):
+                con.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART"))
             if quantos:
                 print(f"[semear] base esvaziada ({quantos} veiculo(s) removidos)")
+
+
+# ---------------------------------------------------------- o catalogo
+
+
+def _modelo_do_catalogo(marca: str, modelo: str, usuario_id: int, perfil: dict) -> int:
+    """O id do modelo, pelo catalogo de verdade - carregado pela migration.
+
+    Do catalogo, o modelo TEM de existir: se a FIPE renomear a versao, a
+    seed quebra aqui e e corrigida, em vez de criar em silencio um
+    customizado que pareceria escolha do dono. Customizado so quando o
+    perfil pede (`modelo_customizado`), e entra pelo mesmo caminho do
+    "Nao encontrei meu modelo".
+    """
+    if perfil.get("modelo_customizado"):
+        marca_obj = repo_catalogo.marca_por_nome(marca)
+        if marca_obj is None:
+            sys.exit(f"[semear] marca '{marca}' fora do catalogo - a base esta migrada?")
+        criado, _ = repo_catalogo.achar_ou_criar_customizado(marca_obj.id, modelo, usuario_id)
+        return criado.id
+    achado = repo_catalogo.modelo_por_nomes(marca, modelo, None)
+    if achado is None:
+        sys.exit(f"[semear] '{marca} {modelo}' nao esta no catalogo - a base esta migrada?")
+    return achado.id
 
 
 # ---------------------------------------------------------- gravar a sessao
@@ -471,6 +538,8 @@ def _gravar_sessao(
     inicio: datetime,
     duracao_s: int,
     limites_da_epoca: dict | None = None,
+    km: int | None = None,
+    observacao: str | None = None,
 ) -> int:
     """Uma sessao completa, pelo mesmo caminho que o Gravador faz.
 
@@ -485,13 +554,15 @@ def _gravar_sessao(
     # por "integridade minima" nao separaria nada na tela de Sessoes.
     _apagar_bits(linhas, fracao=random.choice([0.004, 0.01, 0.02, 0.04, 0.08, 0.08, 0.12, 0.18]))
 
-    # Os limites vao para a Sessao como snapshot, exatamente como o
+    # Os limites vao para a Sessao como snapshot, exatamente como a rota
+    # de iniciar faz com o que a tela escolheu. Nao ha limite do carro: a
+    # sessao e a unica fonte, e a seed so decide QUAIS valores escolher -
+    # os do perfil hoje, ou os da epoca para as sessoes antigas.
     # Gravador faz ao iniciar - e o que a tela de analise le depois.
-    if limites_da_epoca is None:
-        limites = repo_limites.efetivos_do_veiculo(veiculo_id)
-    else:
-        limites = LimitesVeiculo(veiculo_id=veiculo_id, **limites_da_epoca)
-    sessao = repo_sessoes.criar(veiculo_id, snapshot=repo_limites.para_snapshot(limites))
+    limites = limites_da_epoca or perfil["limites_efetivos"]
+    sessao = repo_sessoes.criar(
+        veiculo_id, observacao, snapshot=repo_limites.para_snapshot(limites), km=km
+    )
 
     amostras = [Amostra(sessao_id=sessao.id, **linha) for linha in linhas]
 
@@ -500,7 +571,7 @@ def _gravar_sessao(
     # DetachedInstanceError. No app isso nao acontece porque o Gravador
     # avalia cada amostra assim que ela chega, antes de ir para o buffer -
     # aqui a ordem so reproduz a mesma coisa em lote.
-    detector = DetectorEventos(limites=limites)
+    detector = DetectorEventos(limites=Limites.de(limites))
     eventos: list[Evento] = []
     for amostra in amostras:
         eventos.extend(detector.avaliar(amostra))
@@ -563,26 +634,56 @@ def main() -> None:
             cliente = repo_clientes.implicito_de(usuario.id, usuario.nome)
         else:
             cliente = repo_clientes.criar(usuario.id, perfil["cliente"])
+        campos = dict(perfil["veiculo"])
+        marca, modelo = campos.pop("marca"), campos.pop("modelo")
         veiculo = repo_veiculos.criar(
             # Os dois campos de dono, concordando - o mesmo invariante
             # que `rotas/veiculos.py` garante no app.
             Veiculo(
-                usuario_id=usuario.id, cliente_id=cliente.id, **perfil["veiculo"]
+                usuario_id=usuario.id,
+                cliente_id=cliente.id,
+                modelo_id=_modelo_do_catalogo(marca, modelo, usuario.id, perfil),
+                **campos,
             )
         )
-        if perfil["limites"] is not None:
-            repo_limites.gravar_do_veiculo(veiculo.id, perfil["limites"])
-        perfil["limites_efetivos"] = repo_limites.do_veiculo(veiculo.id)
+        # Os limites que este carro "escolhe" ao iniciar cada sessao: os do
+        # perfil, ou os sugeridos - o mesmo que a opcao "Sugeridos" do Ao
+        # vivo manda.
+        perfil["limites_efetivos"] = perfil["limites"] or repo_limites.sugeridos()
 
-        etiqueta = perfil["veiculo"]["placa"] or f"{perfil['veiculo']['marca']} {perfil['veiculo']['modelo']}"
+        etiqueta = perfil["veiculo"]["placa"] or veiculo.descricao()
+        # Espalhadas nos ultimos 6 meses, em hora plausivel de oficina - e
+        # gravadas EM ORDEM de data. A ordem importa por causa do km: o
+        # `encerrar()` leva o km da sessao ao carro quando ela e a mais
+        # recente, e na hora do encerramento a sessao ainda esta com a data
+        # de agora (o recuo vem depois). Gravando da mais antiga para a mais
+        # nova, o carro termina com o km da ultima, como na vida real.
+        inicios = []
         for _ in range(perfil["sessoes"]):
-            # Espalhadas nos ultimos 6 meses, em hora plausivel de oficina.
             inicio = agora - timedelta(
                 days=random.uniform(0.5, DIAS_DE_HISTORICO),
                 hours=random.uniform(-4, 4),
             )
-            inicio = inicio.replace(minute=random.randrange(60), second=random.randrange(60))
+            inicios.append(
+                inicio.replace(minute=random.randrange(60), second=random.randrange(60))
+            )
+        inicios.sort()
+        km_por_dia = random.uniform(15, 60)
+        km_final = perfil["veiculo"]["quilometragem"]
+
+        for inicio in inicios:
             duracao = random.randint(2 * 60, 40 * 60)
+            # O km do painel no dia: cresce com o tempo ate o km atual do
+            # carro na ultima sessao. Carro sem quilometragem cadastrada nao
+            # tem km nenhum; e uma em cada cinco sessoes fica sem km, como
+            # quem esqueceu de olhar o painel.
+            km = None
+            if km_final is not None and random.random() > 0.2:
+                dias_antes = (inicios[-1] - inicio).total_seconds() / 86400
+                km = max(0, round(km_final - dias_antes * km_por_dia))
+            if inicio == inicios[-1] and km_final is not None:
+                km = km_final
+            observacao = random.choice(NOTAS) if random.random() < 0.35 else None
             # Sessao anterior ao ajuste leva os limites da epoca.
             idade_dias = (agora - inicio).total_seconds() / 86400
             da_epoca = (
@@ -591,7 +692,7 @@ def main() -> None:
                 else None
             )
             total_amostras += _gravar_sessao(
-                perfil, veiculo.id, inicio, duracao, da_epoca
+                perfil, veiculo.id, inicio, duracao, da_epoca, km, observacao
             )
             total_sessoes += 1
 

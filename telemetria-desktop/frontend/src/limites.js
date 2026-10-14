@@ -2,9 +2,9 @@
   Os seis limites como a interface os apresenta: rotulo, unidade, passo do
   input e a frase que explica para que serve cada um.
 
-  So apresentacao. A regra - ordem entre eles, valor positivo, o que
-  acontece quando um carro herda metade - e do backend, e e ele que
-  responde 422 com a frase que a tela mostra. Duplicar a checagem aqui
+  So apresentacao. A regra - ordem entre eles, valor positivo - e do
+  backend, e e ele que responde 422 com a frase de cada campo, que o
+  popup "Nova sessao" do Ao vivo escreve embaixo do campo. Duplicar a checagem aqui
   criaria duas fontes da verdade que sairiam do ar uma da outra.
 
   A ordem da lista e a ordem da tela: a escada de giro primeiro, depois as

@@ -9,11 +9,33 @@
 }
 
 .evento {
+  border-bottom: 1px solid var(--linha);
+}
+
+/* O conteudo da linha: div simples, ou botao/link quando o item leva ao
+   trecho nos graficos. */
+.linha,
+.acao {
   display: flex;
   align-items: center;
   gap: 14px;
+  width: 100%;
   padding: 13px 0;
-  border-bottom: 1px solid var(--linha);
+}
+
+.acao {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.acao:hover,
+.acao:focus-visible {
+  background: var(--realce);
 }
 
 .evento:last-child {

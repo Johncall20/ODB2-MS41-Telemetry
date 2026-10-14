@@ -1,95 +1,74 @@
 /*
-  Os graficos da sessao gravada, em Recharts, e as funcoes que preparam a
-  serie para eles.
+  Os desenhos da Analise, em Recharts, e a serie que todos usam:
 
-  Mexe aqui quem mudar como a sessao e desenhada na tela de Analise.
+  - `GraficoDestaque`: o grafico grande do sinal escolhido, com as zonas de
+    limite, os pontos dos eventos daquele sinal e os trechos sem leitura;
+  - `GraficoTrilha`: a faixa baixa dos outros sinais, so a linha;
+  - `MiniaturaSerie`: a previa da exportacao.
+
+  Quem junta tudo (cursor, ponto fixado, zoom, painel) e o
+  `AnaliseGraficos.jsx`; os sinais, os tipos de evento e o eixo ficam no
+  `graficoApoio.js`.
+
+  Os dois graficos da Analise sao `memo` e NAO recebem o cursor: ele e uma
+  camada HTML por cima (AnaliseGraficos), e assim mover o mouse nao
+  redesenha milhares de pontos a cada pixel. Para a camada cair no tempo
+  certo, todos tem a area de desenho nas mesmas calhas laterais
+  (`CALHA_ESQ`, `CALHA_DIR`).
+
+  Mexe aqui quem mudar o desenho de um grafico da Analise.
 */
+import { memo, useState } from "react";
 import {
   Area,
   AreaChart,
-  Brush,
   CartesianGrid,
-  ReferenceLine,
+  ReferenceArea,
+  ReferenceDot,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { resumoDoEvento, TIPOS_EVENTO } from "./graficoApoio.js";
 import { cronometro, milhar, paraData } from "../../formato.js";
 import c from "../../estilos/comum.module.css";
 import s from "./GraficoSessao.module.css";
-
-/*
-  Amostra com `valid` apagado entra como null e a linha para ali. Os tres
-  graficos da Analise usam o mesmo array, para o tooltip e o zoom de um
-  valerem nos outros.
-*/
 
 // Os sete campos que o firmware publica. A serie carrega todos para os
 // graficos poderem compartilhar um array so.
 const CAMPOS = ["rpm", "ect", "iat", "vbat", "tps", "vanos", "vss"];
 
-// Vermelho para o que pode danificar o motor ou invalidar a gravacao.
-const GRAVES = new Set(["RPM_ALTO", "TEMP_ALTA", "BATERIA_BAIXA", "PERDA_CONEXAO"]);
-const ROTINA = new Set(["INICIO_SESSAO", "FIM_SESSAO"]);
-
-const ROTULO_MARCA = {
-  SHIFT_LIGHT: "Shift light",
-  RPM_ALTO: "Giro acima do limite",
-  TEMP_ALTA: "Temperatura alta",
-  BATERIA_BAIXA: "Bateria baixa",
-  PERDA_CONEXAO: "Perda de conexão",
-  LEITURA_INCOMPLETA: "Leitura incompleta",
-};
+// Intervalo entre amostras acima do qual a linha quebra: o mesmo
+// `DT_MAXIMO_S` (3 s) do backend, que faz desse buraco uma perda de conexao.
+const BURACO_S = 3;
 
 /**
  * Uma linha por amostra: tempo decorrido e cada campo nulo onde `valid`
- * estava apagado. Montada uma vez e passada aos tres graficos, que e o
- * que garante os indices batendo entre eles.
+ * estava apagado. Montada uma vez e passada a todos os graficos.
+ *
+ * Onde nenhuma amostra chegou por mais de `BURACO_S`, entra uma linha com
+ * tudo nulo no meio do buraco (`buraco: true`): sem ela a linha ligaria
+ * os dois lados, e o desenho inventaria a leitura que nao houve.
  */
 export function serieDaSessao(amostras, inicio) {
   const t0 = paraData(inicio)?.getTime();
-  return (amostras || []).map((a) => {
+  const serie = [];
+  for (const a of amostras || []) {
     const d = paraData(a.recebida_em);
     const linha = { t: d && t0 !== undefined ? (d.getTime() - t0) / 1000 : 0 };
     const invalidos = a.invalidos || [];
     for (const campo of CAMPOS) {
       linha[campo] = invalidos.includes(campo) ? null : a[campo];
     }
-    return linha;
-  });
-}
-
-/**
- * Eventos anomalos como posicao no eixo X, em segundos desde o inicio.
- * Os de rotina (inicio e fim da sessao) ficam de fora: eles existem em
- * toda sessao e nao dizem nada sobre o motor.
- */
-export function marcasDeEvento(eventos, inicio) {
-  const t0 = paraData(inicio)?.getTime();
-  if (t0 === undefined) return [];
-  return (eventos || [])
-    .filter((e) => !ROTINA.has(e.tipo))
-    .map((e) => {
-      const d = paraData(e.criado_em);
-      return d ? { tipo: e.tipo, t: (d.getTime() - t0) / 1000 } : null;
-    })
-    .filter(Boolean);
-}
-
-function Dica({ active, payload, label, titulo, unidade }) {
-  if (!active || !payload || payload.length === 0) return null;
-  const valor = payload[0].value;
-  const ausente = valor === null || valor === undefined;
-  return (
-    <div className={s.dica}>
-      <span className={`${s.dicaInstante} ${c.mono}`}>{cronometro(label)}</span>
-      <span className={s.dicaCampo}>{titulo}</span>
-      <span className={`${s.dicaValor} ${c.mono} ${ausente ? s.dicaAusente : ""}`.trim()}>
-        {ausente ? "sem resposta" : `${milhar(valor)}${unidade ? ` ${unidade}` : ""}`}
-      </span>
-    </div>
-  );
+    const anterior = serie[serie.length - 1];
+    if (anterior && linha.t - anterior.t > BURACO_S) {
+      const vazio = { t: (anterior.t + linha.t) / 2, buraco: true };
+      for (const campo of CAMPOS) vazio[campo] = null;
+      serie.push(vazio);
+    }
+    serie.push(linha);
+  }
+  return serie;
 }
 
 /**
@@ -127,139 +106,245 @@ export function MiniaturaSerie({ dados, campo, altura = 54 }) {
   );
 }
 
-export function GraficoSessao({
-  titulo,
-  campo,
-  unidade = "",
+/*
+  A geometria que a camada do cursor precisa conhecer. A area de desenho
+  de todo grafico da Analise vai de CALHA_ESQ ate a largura menos
+  CALHA_DIR: no grafico grande a esquerda e o eixo Y; nas trilhas, o nome.
+  A direita, o valor no cursor.
+*/
+export const CALHA_ESQ = 92;
+export const CALHA_DIR = 92;
+// O grafico grande: 300 px de desenho, a folga de cima e o eixo do tempo.
+export const ALTURA_DESENHO = 300;
+export const TOPO_DESENHO = 10;
+const ALTURA_EIXO_X = 26;
+export const ALTURA_DESTAQUE = TOPO_DESENHO + ALTURA_DESENHO + ALTURA_EIXO_X;
+export const ALTURA_TRILHA = 40;
+
+const CLASSE_TOM = { risco: s.risco, alerta: s.alerta, neutro: s.neutro };
+
+/**
+ * O grafico grande do sinal escolhido.
+ *
+ * - `janela`: o dominio X [de, ate], o zoom;
+ * - `eixo`: dominio e marcas do Y (`eixoRedondo`), calculado por quem
+ *   chama - a camada do cursor usa o mesmo para pôr o valor na altura certa;
+ * - `zonas`: as zonas de limite (`zonasDeLimite`), tingidas;
+ * - `eventos`: so os do sinal, com `t` e `valor`; o selecionado
+ *   (`selecionado`, id) fica maior. Clicar num ponto chama
+ *   `aoEscolherEvento` e NAO chega ao grafico - fixar o cursor e clicar
+ *   fora dos pontos;
+ * - `trechos`: onde a leitura falhou, fundo neutro; o `trechoSelecionado`
+ *   (indice em `trechos`) mais marcado.
+ */
+export const GraficoDestaque = memo(function GraficoDestaque({
   dados,
-  marcas = [],
-  syncId,
-  classe = "",
-  legenda = false,
-  brush = false,
+  campo,
+  janela,
+  eixo,
+  zonas,
+  eventos,
+  selecionado,
+  trechos,
+  trechoSelecionado,
+  classe,
+  aoEscolherEvento,
 }) {
-  const valores = (dados || [])
-    .map((linha) => linha[campo])
-    .filter((v) => v !== null && v !== undefined);
-
-  if (valores.length === 0) {
-    return (
-      <section className={`${c.card} ${c.cardGrafico} ${classe}`}>
-        <div className={c.graficoTopo}>
-          <span className={s.titulo}>{titulo}</span>
-        </div>
-        <p className={s.vazio}>
-          Nenhuma amostra desta sessão trouxe leitura válida deste campo.
-        </p>
-      </section>
-    );
-  }
-
-  let minimo = Math.min(...valores);
-  let maximo = Math.max(...valores);
-  if (maximo === minimo) {
-    // Serie constante: abre um respiro para a linha nao colar na borda.
-    minimo -= 1;
-    maximo += 1;
-  }
-
-  const tiposMarcados = [...new Set(marcas.map((m) => m.tipo))];
-  const faixa = `${milhar(minimo)} – ${milhar(maximo)}${unidade ? ` ${unidade}` : ""}`;
+  const [dica, setDica] = useState(null);
 
   return (
-    <section className={`${c.card} ${c.cardGrafico} ${classe}`}>
-      <div className={c.graficoTopo}>
-        <span className={s.titulo}>{titulo}</span>
-        <span className={`${s.faixa} ${c.mono}`}>{faixa}</span>
-      </div>
+    <div className={`${s.desenho} ${classe}`} style={{ height: ALTURA_DESTAQUE }} onMouseLeave={() => setDica(null)}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={dados} margin={{ top: TOPO_DESENHO, right: CALHA_DIR, bottom: 0, left: 0 }}>
+          <CartesianGrid vertical={false} />
+          <XAxis
+            dataKey="t"
+            type="number"
+            // A janela do zoom; allowDataOverflow corta o que sai dela em
+            // vez de esticar o dominio.
+            domain={janela}
+            allowDataOverflow
+            tickFormatter={cronometro}
+            tickMargin={8}
+            minTickGap={48}
+            height={ALTURA_EIXO_X}
+          />
+          <YAxis
+            domain={eixo.dominio}
+            ticks={eixo.marcas}
+            interval={0}
+            tickFormatter={milhar}
+            tickMargin={8}
+            width={CALHA_ESQ}
+            allowDataOverflow
+          />
 
-      <div className={`${s.desenho} ${brush ? s.desenhoComBrush : ""}`.trim()}>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={dados}
-            syncId={syncId}
-            margin={{ top: 14, right: 12, bottom: 0, left: 0 }}
-          >
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="t"
-              type="number"
-              // O dominio acompanha a fatia visivel, entao o Brush de um
-              // grafico reenquadra os tres.
-              domain={["dataMin", "dataMax"]}
-              tickFormatter={cronometro}
-              tickMargin={8}
-              minTickGap={40}
+          {/* Acima (ou abaixo) do limite: a faixa inteira, tingida. */}
+          {zonas.map((z) => (
+            <ReferenceArea
+              key={z.chave}
+              y1={z.abaixo ? eixo.dominio[0] : z.valor}
+              y2={z.abaixo ? z.valor : z.ate ?? eixo.dominio[1]}
+              ifOverflow="hidden"
+              className={`${s.zona} ${CLASSE_TOM[z.tom]}`}
             />
-            <YAxis
-              // Dominio da sessao inteira, e nao da fatia: dar zoom no
-              // tempo nao pode reescalar o eixo do valor por baixo, senao
-              // o mesmo pico parece maior so porque a janela encolheu. E
-              // o que mantem a faixa do cabecalho valendo para o desenho.
-              domain={[minimo, maximo]}
-              tickFormatter={milhar}
-              tickMargin={6}
-              width={58}
-            />
-            <Tooltip
-              content={<Dica titulo={titulo} unidade={unidade} />}
-              cursor={{ className: s.cursor }}
-              isAnimationActive={false}
-            />
-
-            {marcas.map((m, i) => (
-              <ReferenceLine
-                key={`${m.tipo}-${i}`}
-                x={m.t}
-                className={`${s.marca} ${GRAVES.has(m.tipo) ? s.marcaGrave : ""}`.trim()}
-                strokeDasharray="4 4"
-                label={{
-                  value: ROTULO_MARCA[m.tipo] || m.tipo,
-                  position: "top",
-                  className: s.marcaRotulo,
-                }}
-              />
-            ))}
-
-            <Area
-              type="linear"
-              dataKey={campo}
-              className={s.serie}
-              stroke="currentColor"
-              strokeWidth={1.5}
-              fill="currentColor"
-              isAnimationActive={false}
-              dot={false}
-              activeDot={{ r: 3, strokeWidth: 0 }}
-              // Buraco na leitura e buraco no desenho.
-              connectNulls={false}
-            />
-
-            {brush && (
-              <Brush
-                dataKey="t"
-                tickFormatter={cronometro}
-                height={26}
-                travellerWidth={8}
-                className={s.brush}
-              />
-            )}
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {legenda && tiposMarcados.length > 0 && (
-        <div className={s.legenda}>
-          {tiposMarcados.map((tipo) => (
-            <span key={tipo} className={s.legendaItem}>
-              <span
-                className={`${s.legendaLinha} ${GRAVES.has(tipo) ? s.marcaGrave : ""}`.trim()}
-              />
-              {ROTULO_MARCA[tipo] || tipo}
-            </span>
           ))}
+
+          {/* Leitura que falhou: fundo neutro no trecho. */}
+          {trechos.map((tr, i) => (
+            <ReferenceArea
+              key={`tr-${i}`}
+              x1={tr.inicio_s}
+              x2={Math.max(tr.fim_s, tr.inicio_s + 0.5)}
+              ifOverflow="hidden"
+              className={`${s.trecho} ${i === trechoSelecionado ? s.trechoSelecionado : ""}`.trim()}
+            />
+          ))}
+
+          <Area
+            type="linear"
+            dataKey={campo}
+            className={s.serie}
+            stroke="currentColor"
+            strokeWidth={1.5}
+            fill="currentColor"
+            isAnimationActive={false}
+            dot={false}
+            activeDot={false}
+            // Buraco na leitura e buraco no desenho.
+            connectNulls={false}
+          />
+
+          {eventos.map((e) => (
+            <ReferenceDot
+              key={e.id}
+              x={e.t}
+              y={e.valor}
+              r={8}
+              ifOverflow="discard"
+              shape={(p) => (
+                <PontoEvento
+                  cx={p.cx}
+                  cy={p.cy}
+                  evento={e}
+                  selecionado={e.id === selecionado}
+                  aoEntrar={() => setDica({ x: p.cx, y: p.cy, evento: e })}
+                  aoSair={() => setDica(null)}
+                  aoEscolher={() => aoEscolherEvento(e)}
+                />
+              )}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+
+      {dica && (
+        <div
+          className={`${s.dica} ${dica.y < 110 ? s.dicaAbaixo : ""}`.trim()}
+          style={{ left: dica.x, top: dica.y }}
+          role="tooltip"
+        >
+          <strong className={s.dicaTitulo}>{TIPOS_EVENTO[dica.evento.tipo].nome}</strong>
+          <span className={`${s.dicaLinha} ${c.mono}`}>{cronometro(dica.evento.t)}</span>
+          <span className={s.dicaLinha}>{resumoDoEvento(dica.evento)}</span>
         </div>
       )}
-    </section>
+    </div>
+  );
+});
+
+function PontoEvento({ cx, cy, evento, selecionado, aoEntrar, aoSair, aoEscolher }) {
+  const tipo = TIPOS_EVENTO[evento.tipo];
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+  return (
+    <g
+      className={`${s.ponto} ${CLASSE_TOM[tipo.tom]} ${selecionado ? s.pontoSelecionado : ""}`.trim()}
+      role="button"
+      tabIndex={0}
+      aria-label={`${tipo.nome} em ${cronometro(evento.t)}`}
+      aria-pressed={selecionado}
+      onMouseEnter={aoEntrar}
+      onMouseLeave={aoSair}
+      onFocus={aoEntrar}
+      onBlur={aoSair}
+      // O clique no ponto escolhe o evento e nao chega ao grafico, onde
+      // fixaria o cursor.
+      onClick={(ev) => {
+        ev.stopPropagation();
+        aoEscolher();
+      }}
+      onKeyDown={(ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          aoEscolher();
+        }
+      }}
+    >
+      <circle cx={cx} cy={cy} r={12} className={s.alvo} />
+      {selecionado && <circle cx={cx} cy={cy} r={12} className={s.anel} />}
+      <Forma forma={tipo.forma} cx={cx} cy={cy} escala={selecionado ? 1.35 : 1} />
+    </g>
   );
 }
+
+/** O desenho de cada tipo, centrado em (cx, cy). A cor vem do `color`. */
+export function Forma({ forma, cx, cy, escala = 1 }) {
+  const k = escala;
+  switch (forma) {
+    case "triangulo":
+      return (
+        <polygon
+          className={s.forma}
+          points={`${cx},${cy - 6 * k} ${cx + 6 * k},${cy + 5 * k} ${cx - 6 * k},${cy + 5 * k}`}
+        />
+      );
+    case "losango":
+      return (
+        <polygon
+          className={s.forma}
+          points={`${cx},${cy - 7 * k} ${cx + 6 * k},${cy} ${cx},${cy + 7 * k} ${cx - 6 * k},${cy}`}
+        />
+      );
+    case "quadrado":
+      return <rect className={s.forma} x={cx - 5 * k} y={cy - 5 * k} width={10 * k} height={10 * k} />;
+    case "xis":
+      return (
+        <path
+          className={s.formaTraco}
+          d={`M${cx - 5 * k},${cy - 5 * k} L${cx + 5 * k},${cy + 5 * k} M${cx + 5 * k},${cy - 5 * k} L${cx - 5 * k},${cy + 5 * k}`}
+        />
+      );
+    default:
+      return <circle className={s.forma} cx={cx} cy={cy} r={5.5 * k} />;
+  }
+}
+
+/**
+ * Uma trilha: so a linha do sinal, sem eixo, grade, evento nem limite. A
+ * area de desenho ocupa o elemento inteiro - quem poe nome e valor nas
+ * calhas e a linha da trilha, no AnaliseGraficos.
+ */
+export const GraficoTrilha = memo(function GraficoTrilha({ dados, campo, janela, dominio, classe }) {
+  return (
+    <div className={`${s.trilha} ${classe}`} style={{ height: ALTURA_TRILHA }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={dados} margin={{ top: 3, right: 0, bottom: 3, left: 0 }}>
+          <XAxis dataKey="t" type="number" domain={janela} allowDataOverflow hide />
+          <YAxis domain={dominio} allowDataOverflow hide />
+          <Area
+            type="linear"
+            dataKey={campo}
+            className={s.serie}
+            stroke="currentColor"
+            strokeWidth={1.2}
+            fill="currentColor"
+            isAnimationActive={false}
+            dot={false}
+            activeDot={false}
+            connectNulls={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+});

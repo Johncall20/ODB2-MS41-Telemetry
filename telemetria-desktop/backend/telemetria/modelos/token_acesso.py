@@ -12,13 +12,18 @@ nada.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime
+from sqlalchemy import CheckConstraint, DateTime
 from sqlmodel import Field, SQLModel
 
 from .comum import agora
 
 
 class TokenAcesso(SQLModel, table=True):
+    # Espelha a migration 0008: token que nasce vencido nao serve a nada.
+    __table_args__ = (
+        CheckConstraint("expira_em > criado_em", name="ck_tokenacesso_validade"),
+    )
+
     id: Optional[int] = Field(default=None, primary_key=True)
 
     # O HASH do token, nunca o token. Quem tiver o banco nao consegue se

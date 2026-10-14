@@ -9,8 +9,8 @@
   Por isso recarregar a pagina perde o estado e nao a sessao: o provider
   nasce vazio, pergunta `GET /api/auth/eu`, e o cookie responde quem e.
 */
-import { createContext, useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "../api.js";
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, quandoSessaoExpirar } from "../api.js";
 
 export const ContextoAutenticacao = createContext(null);
 
@@ -21,6 +21,22 @@ export function AutenticacaoProvider({ children }) {
   // para /login antes de a primeira resposta chegar: sem isto, todo F5
   // numa tela interna piscaria o login antes de voltar.
   const [carregando, setCarregando] = useState(true);
+  // A sessao caiu sozinha (401 numa tela interna), e nao por "Sair": a
+  // guarda leva ao /login com o aviso. Zera ao entrar de novo.
+  const [expirou, setExpirou] = useState(false);
+  const usuarioRef = useRef(null);
+  usuarioRef.current = usuario;
+
+  // O api.js avisa todo 401 fora do login. So conta como expirada se havia
+  // alguem logado: antes disso, 401 e so "ninguem entrou ainda".
+  useEffect(() => {
+    quandoSessaoExpirar(() => {
+      if (!usuarioRef.current) return;
+      setExpirou(true);
+      setUsuario(null);
+    });
+    return () => quandoSessaoExpirar(null);
+  }, []);
 
   /** Repergunta quem esta logado. Usado depois de mudar algo da conta -
    *  trocar o papel muda o que a interface inteira mostra. */
@@ -46,12 +62,14 @@ export function AutenticacaoProvider({ children }) {
 
   const entrar = useCallback(async (credenciais) => {
     setUsuario(await api.login(credenciais));
+    setExpirou(false);
   }, []);
 
   const cadastrar = useCallback(async (dados) => {
     // O backend ja devolve logado: quem acabou de provar que tem a senha
     // nao precisa prova-la de novo na tela seguinte.
     setUsuario(await api.cadastro(dados));
+    setExpirou(false);
   }, []);
 
   const sair = useCallback(async () => {
@@ -73,8 +91,8 @@ export function AutenticacaoProvider({ children }) {
   }, []);
 
   const valor = useMemo(
-    () => ({ usuario, carregando, entrar, cadastrar, sair, recarregar, excluirConta }),
-    [usuario, carregando, entrar, cadastrar, sair, recarregar, excluirConta]
+    () => ({ usuario, carregando, expirou, entrar, cadastrar, sair, recarregar, excluirConta }),
+    [usuario, carregando, expirou, entrar, cadastrar, sair, recarregar, excluirConta]
   );
 
   return (

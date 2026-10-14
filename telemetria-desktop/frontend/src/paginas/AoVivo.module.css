@@ -23,6 +23,18 @@
   white-space: nowrap;
 }
 
+/* O rotulo e, quando ha, o motivo em letra menor embaixo - o rotulo longo
+   numa linha so espremia o cronometro. */
+.sinal-texto {
+  display: flex;
+  flex-direction: column;
+}
+
+.sinal-detalhe {
+  font-size: 13px;
+  color: var(--fraco);
+}
+
 .ponto {
   width: 10px;
   height: 10px;
@@ -105,18 +117,37 @@
   }
 }
 
-/* Link discreto para os limites do carro selecionado: e onde se muda o
-   que a barra de giro marca e o que vira evento na gravacao. */
-.ajustar-limites {
-  align-self: flex-start;
-  margin: -8px 0 18px;
-  font-size: 14px;
+/* ------------------------------------------------- limites e notas */
+
+/* Antes de gravar: o resumo dos limites que a barra marca e a origem.
+   Texto discreto, sem controle - a escolha e do popup "Nova sessão". */
+.limites-partida {
+  margin: 10px 0 0;
+  font-size: 13px;
   color: var(--apagado);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
 }
 
-.ajustar-limites:hover {
-  color: var(--texto);
-  border-bottom-color: var(--linha);
+/* Gravando: os limites e o km que travaram no inicio, no cabecalho. */
+.travados {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--apagado);
+}
+
+/* Notas, depois dos dados ao vivo, nos dois estados. */
+.notas {
+  margin-top: 22px;
+}
+
+/* "Entendi" do aviso de gravacao interrompida: com cara de link. */
+.entendi {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }

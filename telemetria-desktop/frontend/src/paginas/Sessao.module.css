@@ -1,9 +1,12 @@
 /* Node 5:529: card centrado com o resumo da sessao encerrada. */
 
+/* Coluna: o cartao do resumo e, abaixo dele, o card de km e notas. */
 .centralizado {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 22px;
   min-height: 100%;
 }
 
@@ -91,4 +94,12 @@
   .cartao {
     padding: 28px;
   }
+}
+
+/* ------------------------------------------------------ km e notas */
+
+/* O card de km e notas (KmENotas), na mesma largura do resumo. */
+.dados {
+  width: 760px;
+  max-width: 100%;
 }
