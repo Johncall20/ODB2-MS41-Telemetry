@@ -42,7 +42,8 @@ def agregados(sessao_id: int) -> dict:
     """
     consulta = select(
         func.count(Amostra.id),
-        func.count(case((Amostra.valid == VALID_COMPLETO, 1))),
+        # Mascara, como em Amostra.completa(): os bits dos extras nao contam.
+        func.count(case((Amostra.valid.op("&")(VALID_COMPLETO) == VALID_COMPLETO, 1))),
         func.max(_quando_valido("rpm")),
         func.max(_quando_valido("vss")),
         func.max(_quando_valido("ect")),

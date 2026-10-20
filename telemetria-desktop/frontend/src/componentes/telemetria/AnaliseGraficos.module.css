@@ -20,6 +20,38 @@
   color: var(--ok);
 }
 
+/* Os demais parametros. Dezoito sinais nao cabem em dezoito cores que se
+   distingam: a cor repete entre grupos diferentes, e o nome na trilha e
+   na barra de leitura desfaz a duvida. */
+.tps,
+.load,
+.lam1 {
+  color: var(--serie-azul);
+}
+
+.vanos,
+.maf,
+.lam2 {
+  color: var(--serie-ciano);
+}
+
+.iat,
+.ign,
+.lint1 {
+  color: var(--serie-violeta);
+}
+
+.knock,
+.mafv,
+.lint2 {
+  color: var(--serie-rosa);
+}
+
+.inj,
+.iacv {
+  color: var(--serie-areia);
+}
+
 .risco {
   color: var(--risco);
 }
@@ -179,6 +211,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px 20px;
+}
+
+/* O botao "Sinais" e, ao lado, os botoes de destaque dos escolhidos. */
+.cabecalho-sinais {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cabecalho-sinais .seletor {
+  min-width: 0;
 }
 
 /* O seletor do sinal: um grupo de botoes, o escolhido aceso. Rola na

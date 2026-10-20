@@ -13,13 +13,16 @@ export function Leitura({ rotulo, valor, unidade, casas = 0, invalido, semLeitur
   const semNumero = valor === null || valor === undefined;
   const apagado = invalido || Boolean(semLeitura);
   // Agrupamento de milhar e virgula decimal, como no Figma ("2.940", "13,9").
+  // Sem "-0,0": a correcao de lambda oscila em volta do zero.
   const texto =
     apagado || semNumero
       ? "––"
-      : Number(valor).toLocaleString("pt-BR", {
-          minimumFractionDigits: casas,
-          maximumFractionDigits: casas,
-        });
+      : Number(valor)
+          .toLocaleString("pt-BR", {
+            minimumFractionDigits: casas,
+            maximumFractionDigits: casas,
+          })
+          .replace(/^-(0(,0+)?)$/, "$1");
 
   return (
     <div

@@ -9,22 +9,39 @@
   da sessao. Isto so decide como mostrar.
 */
 import { milhar, paraData } from "../../formato.js";
+import { PARAMETROS } from "../../parametros.js";
 
 /*
-  Os quatro sinais da Analise, na ordem do seletor e da barra de leitura.
-  `casas`: decimais na tela - a tensao e o unico que precisa de uma.
+  Os sinais da Analise: todos os parametros do firmware (parametros.js),
+  na ordem do seletor e da barra de leitura. Os quatro de sempre mantem o
+  nome curto e o formato que a Analise ja usava - a tensao com uma casa,
+  nao duas como no painel ao vivo.
 */
-export const SINAIS = [
-  { campo: "rpm", nome: "RPM", unidade: "rpm", casas: 0 },
-  { campo: "vss", nome: "Velocidade", unidade: "km/h", casas: 0 },
-  { campo: "ect", nome: "Temperatura", unidade: "°C", casas: 0 },
-  { campo: "vbat", nome: "Tensão", unidade: "V", casas: 1 },
-];
+const NA_ANALISE = {
+  rpm: { nome: "RPM", unidade: "rpm" },
+  ect: { nome: "Temperatura" },
+  vbat: { nome: "Tensão", casas: 1 },
+};
+
+export const SINAIS = PARAMETROS.map((p) => ({
+  campo: p.chave,
+  nome: p.rotulo,
+  unidade: p.unidade,
+  casas: p.casas,
+  grupo: p.grupo,
+  ...NA_ANALISE[p.chave],
+}));
+
+// Os que a Analise mostra sem escolha nenhuma: os quatro de antes dos extras.
+export const SINAIS_PADRAO = ["rpm", "vss", "ect", "vbat"];
 
 export const SINAL = Object.fromEntries(SINAIS.map((x) => [x.campo, x]));
 
+// Sem "-0,0": a correcao de lambda oscila em volta do zero.
 function numero(valor, casas) {
-  return valor.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
+  return valor
+    .toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas })
+    .replace(/^-(0(,0+)?)$/, "$1");
 }
 
 /** "6.461 rpm", "13,8 V"; null e "sem resposta" - nunca um numero. */
@@ -136,13 +153,31 @@ export function resumoDoEvento(evento) {
   Eixo Y de cada campo: o passo das marcas e se o eixo parte do zero. RPM
   e velocidade partem do zero (a altura da linha e a grandeza); agua e
   bateria partem do multiplo abaixo do minimo, senao a faixa util ficaria
-  espremida no alto do grafico.
+  espremida no alto do grafico. O passo e o menor: `eixoRedondo` dobra ou
+  quintuplica quando a faixa pede.
+
+  Knock, avanco e as integracoes de lambda nao partem do zero: ficam em
+  volta dele, ou abaixo (o retardo de knock e negativo).
 */
 const EIXOS = {
   rpm: { passo: 1000, desdeZero: true },
   vss: { passo: 20, desdeZero: true },
   ect: { passo: 20, desdeZero: false },
   vbat: { passo: 1, desdeZero: false },
+  tps: { passo: 10, desdeZero: true },
+  vanos: { passo: 10, desdeZero: true },
+  iat: { passo: 10, desdeZero: false },
+  load: { passo: 50, desdeZero: true },
+  maf: { passo: 50, desdeZero: true },
+  mafv: { passo: 0.5, desdeZero: true },
+  iacv: { passo: 5, desdeZero: true },
+  ign: { passo: 5, desdeZero: false },
+  knock: { passo: 1, desdeZero: false },
+  inj: { passo: 1, desdeZero: true },
+  lam1: { passo: 0.1, desdeZero: true },
+  lam2: { passo: 0.1, desdeZero: true },
+  lint1: { passo: 2, desdeZero: false },
+  lint2: { passo: 2, desdeZero: false },
 };
 
 // Mais intervalos que isto e o passo dobra (ou quintuplica): as marcas se

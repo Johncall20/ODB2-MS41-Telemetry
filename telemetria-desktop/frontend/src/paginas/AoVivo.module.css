@@ -75,11 +75,23 @@
 
 /* ------------------------------------------------------- grade e graficos */
 
+/* O seletor de parametros, no canto direito, logo acima dos cards. */
+.grade-topo {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 34px;
+}
+
 .grade {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
-  margin-top: 34px;
+  margin-top: 16px;
+}
+
+.grade-vazia {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .graficos {

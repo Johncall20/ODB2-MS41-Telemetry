@@ -8,7 +8,10 @@ from .catalogo import MARCA_OUTRA, Marca, Modelo, descrever
 from .cliente import Cliente
 from .comum import agora
 from .enums import (
+    BITS_EXTRAS,
+    BITS_PARAMETROS,
     BITS_VALID,
+    CAMPOS_EXTRAS,
     VALID_COMPLETO,
     Cambio,
     Combustivel,
@@ -18,6 +21,7 @@ from .enums import (
     StatusSessao,
     TipoEvento,
     campos_invalidos,
+    campos_sem_resposta,
 )
 from .evento import Evento
 from .limites import CAMPOS_LIMITE, LIMITES_SUGERIDOS, Limites
@@ -36,7 +40,10 @@ __all__ = [
     "Modelo",
     "PerfilEcu",
     "Cliente",
+    "BITS_EXTRAS",
+    "BITS_PARAMETROS",
     "BITS_VALID",
+    "CAMPOS_EXTRAS",
     "CAMPOS_LIMITE",
     "Evento",
     "EstadoLeitor",
@@ -52,5 +59,6 @@ __all__ = [
     "Veiculo",
     "agora",
     "campos_invalidos",
+    "campos_sem_resposta",
     "normalizar_placa",
 ]

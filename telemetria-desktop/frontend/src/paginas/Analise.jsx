@@ -4,12 +4,14 @@
   O contraste e com /relatorios, que olha varias sessoes. Mexe aqui quem
   mudar como uma gravacao e apresentada.
 */
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { dataHora, duracao, milhar, formatarPlaca } from "../formato.js";
 import { serieDaSessao } from "../componentes/telemetria/GraficoSessao.jsx";
 import { AnaliseGraficos } from "../componentes/telemetria/AnaliseGraficos.jsx";
+import { SINAIS_PADRAO } from "../componentes/telemetria/graficoApoio.js";
+import { escreverSelecao, lerSelecao } from "../parametros.js";
 import { aplicarEdicao, KmENotas } from "../componentes/telemetria/KmENotas.jsx";
 import { Metricas } from "../componentes/telemetria/Metricas.jsx";
 import { Download } from "lucide-react";
@@ -21,7 +23,8 @@ import s from "./Analise.module.css";
 
 /*
   Node 5:916. O card "Lambda medio" e o botao "Diagnostico" do Figma nao
-  entraram: o firmware nao le sonda nem DTC.
+  entraram: o firmware nao le DTC, e as sondas lambda so aparecem como
+  sinal nos graficos (sessao gravada antes dos extras nao tem).
 */
 
 /** Uma sessao inteira: graficos sincronizados, eventos e metricas. */
@@ -30,7 +33,7 @@ export function Analise() {
   // `?evento=ID&t=SEGUNDOS`: a lista de eventos da tela da sessao manda
   // para ca com o evento escolhido e o zoom no trecho dele. Link antigo, so
   // com `t`: o evento mais perto daquele instante.
-  const [parametros] = useSearchParams();
+  const [parametros, setParametros] = useSearchParams();
   const foco = useMemo(() => {
     const numero = (nome) => {
       const v = parametros.has(nome) ? Number(parametros.get(nome)) : NaN;
@@ -40,6 +43,22 @@ export function Analise() {
     const t = numero("t");
     return evento === null && t === null ? null : { evento, t };
   }, [parametros]);
+
+  // `?sinais=rpm,maf,lam1`: os sinais escolhidos no seletor da Analise, na
+  // query como o resto - o link reabre os mesmos graficos. Vazio volta ao
+  // padrao: a Analise precisa de um sinal em destaque.
+  const escolhidos = lerSelecao(parametros.get("sinais"), SINAIS_PADRAO);
+  const sinais = escolhidos.length ? escolhidos : SINAIS_PADRAO;
+  const escolherSinais = useCallback(
+    (chaves) => {
+      const proximos = new URLSearchParams(parametros);
+      const texto = escreverSelecao(chaves, SINAIS_PADRAO);
+      if (texto === null) proximos.delete("sinais");
+      else proximos.set("sinais", texto);
+      setParametros(proximos, { replace: true });
+    },
+    [parametros, setParametros]
+  );
   // Id invalido e 404 viram "esta sessao nao existe"; falha de carga,
   // "Tentar de novo" - o mesmo tratamento de toda tela com :id.
   const { dados, setDados, falha, tentarDeNovo } = useCarga(id, api.lerSessao);
@@ -123,6 +142,8 @@ export function Analise() {
         limites={limites}
         trechos={trechos}
         foco={foco}
+        sinais={sinais}
+        aoMudarSinais={escolherSinais}
         notas={
           <KmENotas
             sessao={sessao}

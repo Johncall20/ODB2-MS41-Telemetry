@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse, Response
 
 from ..contexto import Contexto, obter_contexto
-from ..modelos import TipoEvento, Usuario, campos_invalidos
+from ..modelos import TipoEvento, Usuario, campos_sem_resposta
 from ..repositorios import amostras as repo_amostras
 from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
@@ -260,10 +260,10 @@ def detalhe(sessao_id: int, usuario: Usuario = Depends(usuario_atual)):
             amostras, resumo.get("duracao_s"), limites
         ),
         # Cada amostra sai com o bitmask ja decodificado. Quem sabe que bit
-        # e de qual campo e o backend (modelos.BITS_VALID); a tela de
+        # e de qual campo e o backend (modelos.BITS_PARAMETROS); a tela de
         # analise so precisa saber onde a linha tem buraco.
         "amostras": [
-            {**a.model_dump(), "invalidos": campos_invalidos(a.valid)} for a in amostras
+            {**a.model_dump(), "invalidos": campos_sem_resposta(a.valid)} for a in amostras
         ],
         "eventos": [{**e.model_dump(), **detalhes.get(e.id, {})} for e in eventos],
         # Onde a leitura falhou, como trecho (inicio e fim): a Analise

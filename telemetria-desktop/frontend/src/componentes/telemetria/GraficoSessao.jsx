@@ -31,12 +31,13 @@ import {
 } from "recharts";
 import { resumoDoEvento, TIPOS_EVENTO } from "./graficoApoio.js";
 import { cronometro, milhar, paraData } from "../../formato.js";
+import { PARAMETROS } from "../../parametros.js";
 import c from "../../estilos/comum.module.css";
 import s from "./GraficoSessao.module.css";
 
-// Os sete campos que o firmware publica. A serie carrega todos para os
-// graficos poderem compartilhar um array so.
-const CAMPOS = ["rpm", "ect", "iat", "vbat", "tps", "vanos", "vss"];
+// Todos os campos que o firmware publica, extras da MS41 inclusos. A serie
+// carrega todos para os graficos poderem compartilhar um array so.
+const CAMPOS = PARAMETROS.map((p) => p.chave);
 
 // Intervalo entre amostras acima do qual a linha quebra: o mesmo
 // `DT_MAXIMO_S` (3 s) do backend, que faz desse buraco uma perda de conexao.

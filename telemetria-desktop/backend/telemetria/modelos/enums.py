@@ -86,7 +86,11 @@ class EstadoLeitor(str, Enum):
     ERRO = "ERRO"
 
 
-# Bitmask publicado pelo firmware no campo "valid".
+# Bitmask publicado pelo firmware no campo "valid": o bit e a posicao do
+# parametro na tabela kParams do firmware.
+#
+# Estes sete sao o NUCLEO - os que o firmware le desde o inicio. Sao eles
+# que decidem se a leitura esta completa, a integridade e o detector.
 BITS_VALID: dict[str, int] = {
     "ect": 0x01,
     "rpm": 0x02,
@@ -98,11 +102,41 @@ BITS_VALID: dict[str, int] = {
 }
 VALID_COMPLETO = 0x7F
 
+# Os parametros que o firmware da MS41 passou a ler depois (bits 7 a 17).
+# Sao leitura a mais, nao entram em `completa()`: firmware antigo nao manda
+# nenhum deles, e isso nao e leitura incompleta.
+BITS_EXTRAS: dict[str, int] = {
+    "load": 1 << 7,
+    "maf": 1 << 8,
+    "mafv": 1 << 9,
+    "knock": 1 << 10,
+    "ign": 1 << 11,
+    "inj": 1 << 12,
+    "iacv": 1 << 13,
+    "lint1": 1 << 14,
+    "lint2": 1 << 15,
+    "lam1": 1 << 16,
+    "lam2": 1 << 17,
+}
+CAMPOS_EXTRAS = tuple(BITS_EXTRAS)
+
+# Todos os parametros, nucleo e extras: e o que diz se UM campo respondeu.
+BITS_PARAMETROS: dict[str, int] = {**BITS_VALID, **BITS_EXTRAS}
+
 
 def campos_invalidos(valid: int) -> list[str]:
-    """Os campos que a central NAO respondeu naquela leitura.
+    """Os campos do nucleo que a central NAO respondeu naquela leitura.
 
     O firmware repete o numero anterior quando falha, entao sem esta lista
     o dado velho passaria por medicao nova.
     """
     return [nome for nome, bit in BITS_VALID.items() if not valid & bit]
+
+
+def campos_sem_resposta(valid: int) -> list[str]:
+    """Como `campos_invalidos`, mas de todos os parametros, extras inclusos.
+
+    E o que a tela ao vivo usa para apagar cada card. Nao serve para
+    integridade: com firmware antigo, todo extra sai daqui.
+    """
+    return [nome for nome, bit in BITS_PARAMETROS.items() if not valid & bit]

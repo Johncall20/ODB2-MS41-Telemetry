@@ -19,7 +19,7 @@ from ..modelos import (
     Limites,
     TipoEvento,
     agora,
-    campos_invalidos,
+    campos_sem_resposta,
 )
 from ..repositorios import amostras as repo_amostras
 from ..repositorios import limites as repo_limites
@@ -205,7 +205,8 @@ class Gravador:
         """
         self.ultima = leitura
         payload = dict(leitura)
-        payload["invalidos"] = campos_invalidos(leitura["valid"])
+        # Todos os parametros, extras inclusos: a tela apaga card por card.
+        payload["invalidos"] = campos_sem_resposta(leitura["valid"])
         payload["gravando"] = self.sessao_id is not None
         await self.hub.enviar("amostra", payload, dono=self.dono_id)
 

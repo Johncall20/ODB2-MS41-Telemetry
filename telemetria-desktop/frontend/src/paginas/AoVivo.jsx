@@ -30,6 +30,8 @@ import {
   useInicioSessao,
 } from "../componentes/telemetria/LimitesSessao.jsx";
 import { NovaSessao } from "../componentes/telemetria/NovaSessao.jsx";
+import { SeletorParametros } from "../componentes/telemetria/SeletorParametros.jsx";
+import { PARAMETROS, escreverSelecao, lerSelecao } from "../parametros.js";
 import { CampoNotas, NotasSessao } from "../componentes/telemetria/NotasSessao.jsx";
 import { Circle, Square } from "lucide-react";
 import { Aviso } from "../componentes/ui/Aviso.jsx";
@@ -38,8 +40,10 @@ import c from "../estilos/comum.module.css";
 import s from "./AoVivo.module.css";
 
 /*
-  Nodes 5:106 e 5:307 - a mesma tela nos dois estados. MAP, lambda e
-  codigos de falha do Figma nao entraram: o firmware nao le nada disso.
+  Nodes 5:106 e 5:307 - a mesma tela nos dois estados. MAP e codigos de
+  falha do Figma nao entraram: o firmware nao le nada disso. Os cards sao
+  os parametros que o firmware publica (parametros.js), e quem esta na
+  tela escolhe quais ver.
 */
 
 const JANELA_GRAFICO = 60; // "ultimos 60 s" do Figma, a 1 Hz nominal
@@ -137,6 +141,20 @@ export function AoVivo() {
       const proximos = new URLSearchParams(parametros);
       if (id) proximos.set("veiculo", id);
       else proximos.delete("veiculo");
+      setParametros(proximos, { replace: true });
+    },
+    [parametros, setParametros]
+  );
+
+  // Quais cards o painel mostra. Na query, pelo mesmo motivo do carro: o
+  // link reabre o mesmo painel. O padrao nao escreve nada na URL.
+  const visiveis = lerSelecao(parametros.get("parametros"));
+  const escolherParametros = useCallback(
+    (chaves) => {
+      const proximos = new URLSearchParams(parametros);
+      const texto = escreverSelecao(chaves);
+      if (texto === null) proximos.delete("parametros");
+      else proximos.set("parametros", texto);
       setParametros(proximos, { replace: true });
     },
     [parametros, setParametros]
@@ -412,35 +430,52 @@ export function AoVivo() {
       {erro && <Aviso>{erro}</Aviso>}
       {descarte && <Aviso atencao>{descarte}</Aviso>}
 
+      <div className={s.gradeTopo}>
+        <SeletorParametros selecionados={visiveis} aoMudar={escolherParametros} />
+      </div>
+
       <div className={s.grade}>
-        <Leitura rotulo="RPM" valor={amostra?.rpm} invalido={parado("rpm")} semLeitura={semLeitura} largo>
-          <BarraGiro
-            rpm={amostra?.rpm}
-            // Leitura parada nao acende bloco: seria giro de segundos atras.
-            invalido={parado("rpm") || Boolean(semLeitura)}
-            shift={limites?.shift_light_rpm}
-            alto={limites?.rpm_alto}
-          />
-          {/*
-            Antes de gravar: o que a barra esta marcando e de onde vem. Sem
-            controles - a escolha e feita no popup, ao clicar em gravar.
-          */}
-          {!gravando && partida && (
-            <p className={s.limitesPartida}>
-              {resumoLimites(numericos(partida.valores))} · {ORIGEM_PARTIDA[partida.origem]}
-            </p>
-          )}
-        </Leitura>
-        <Leitura rotulo="Velocidade" valor={amostra?.vss} unidade="km/h" invalido={parado("vss")} semLeitura={semLeitura} />
-        <Leitura rotulo="Temp. do motor" valor={amostra?.ect} unidade="°C" invalido={parado("ect")} semLeitura={semLeitura} />
-        <Leitura rotulo="TPS" valor={amostra?.tps} unidade="%" casas={1} invalido={parado("tps")} semLeitura={semLeitura} />
         {/*
-          VANOS e IAT nao aparecem em tela nenhuma do Figma, mas o firmware
-          entrega os dois. Ocupam o lugar que era de MAP e Lambda.
+          Os cards saem do catalogo (parametros.js), na ordem dele, so os
+          escolhidos. O RPM e o unico diferente: largo, com a barra de giro.
         */}
-        <Leitura rotulo="VANOS" valor={amostra?.vanos} unidade="%" casas={1} invalido={parado("vanos")} semLeitura={semLeitura} />
-        <Leitura rotulo="Temp. do ar" valor={amostra?.iat} unidade="°C" invalido={parado("iat")} semLeitura={semLeitura} />
-        <Leitura rotulo="Bateria" valor={amostra?.vbat} unidade="V" casas={2} invalido={parado("vbat")} semLeitura={semLeitura} />
+        {PARAMETROS.filter((p) => visiveis.includes(p.chave)).map((p) =>
+          p.chave === "rpm" ? (
+            <Leitura key="rpm" rotulo={p.rotulo} valor={amostra?.rpm} invalido={parado("rpm")} semLeitura={semLeitura} largo>
+              <BarraGiro
+                rpm={amostra?.rpm}
+                // Leitura parada nao acende bloco: seria giro de segundos atras.
+                invalido={parado("rpm") || Boolean(semLeitura)}
+                shift={limites?.shift_light_rpm}
+                alto={limites?.rpm_alto}
+              />
+              {/*
+                Antes de gravar: o que a barra esta marcando e de onde vem. Sem
+                controles - a escolha e feita no popup, ao clicar em gravar.
+              */}
+              {!gravando && partida && (
+                <p className={s.limitesPartida}>
+                  {resumoLimites(numericos(partida.valores))} · {ORIGEM_PARTIDA[partida.origem]}
+                </p>
+              )}
+            </Leitura>
+          ) : (
+            <Leitura
+              key={p.chave}
+              rotulo={p.rotulo}
+              valor={amostra?.[p.chave]}
+              unidade={p.unidade}
+              casas={p.casas}
+              invalido={parado(p.chave)}
+              semLeitura={semLeitura}
+            />
+          )
+        )}
+        {visiveis.length === 0 && (
+          <p className={`${c.paginaVazia} ${s.gradeVazia}`}>
+            Nenhum parâmetro escolhido. Use o botão Parâmetros para montar o painel.
+          </p>
+        )}
       </div>
 
       <div className={s.graficos}>

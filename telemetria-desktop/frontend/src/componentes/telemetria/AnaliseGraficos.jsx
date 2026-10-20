@@ -6,7 +6,8 @@
   O estado que eles dividem mora aqui, uma vez so:
   - a JANELA de tempo (o zoom): todos os graficos recebem o mesmo dominio
     X, e quem a muda e o minimapa, o painel e o `?t=`;
-  - o SINAL EM DESTAQUE (rpm, velocidade, temperatura, tensao);
+  - o SINAL EM DESTAQUE, entre os escolhidos no seletor de sinais (a
+    escolha mora na query, quem guarda e a pagina);
   - o CURSOR (indice da serie sob o mouse) e o PONTO FIXADO (A), que a
     barra de leitura le e a camada por cima dos graficos desenha;
   - a SELECAO do painel: um evento do motor ou um trecho de qualidade.
@@ -40,6 +41,7 @@ import {
   marcasDeEvento,
   resumoDoEvento,
   SINAIS,
+  SINAIS_PADRAO,
   SINAL,
   TIPOS_DE_TRECHO,
   TIPOS_DO_MOTOR,
@@ -48,6 +50,7 @@ import {
   zonasDeLimite,
 } from "./graficoApoio.js";
 import { PainelAnalise, resumoDoTrecho } from "./PainelAnalise.jsx";
+import { SeletorParametros } from "./SeletorParametros.jsx";
 import c from "../../estilos/comum.module.css";
 import s from "./AnaliseGraficos.module.css";
 
@@ -60,7 +63,11 @@ const TOLERANCIA_SOLTAR_PX = 6;
 // `?t=` sem `?evento=` (link antigo): o evento mais perto, ate isto.
 const TOLERANCIA_FOCO_S = 2;
 
-const COR_SINAL = { rpm: s.rpm, vss: s.vss, ect: s.ect, vbat: s.vbat };
+// A classe de cor de cada sinal tem o nome do campo (AnaliseGraficos.module.css).
+const COR_SINAL = Object.fromEntries(SINAIS.map((x) => [x.campo, s[x.campo]]));
+
+// As opcoes do seletor de sinais, com os nomes da Analise.
+const OPCOES_SINAIS = SINAIS.map((x) => ({ chave: x.campo, rotulo: x.nome, grupo: x.grupo }));
 
 /** Indice da amostra mais proxima de `t` (a serie esta em ordem de tempo). */
 function maisProximo(serie, t) {
@@ -78,8 +85,20 @@ function maisProximo(serie, t) {
 /**
  * `foco`: {evento, t} do `?evento=` e `?t=` - abre com o evento escolhido
  * e o zoom no trecho. `notas`: o card de km e notas, que vai no painel.
+ * `sinais`: as chaves escolhidas no seletor (pelo menos uma); quem guarda
+ * a escolha e a pagina, e `aoMudarSinais` recebe a lista nova.
  */
-export function AnaliseGraficos({ serie, eventos, inicio, limites, trechos = [], foco = null, notas = null }) {
+export function AnaliseGraficos({
+  serie,
+  eventos,
+  inicio,
+  limites,
+  trechos = [],
+  foco = null,
+  notas = null,
+  sinais = SINAIS_PADRAO,
+  aoMudarSinais,
+}) {
   const total = useMemo(
     () => (serie.length ? [serie[0].t, serie[serie.length - 1].t] : [0, 1]),
     [serie]
@@ -90,7 +109,7 @@ export function AnaliseGraficos({ serie, eventos, inicio, limites, trechos = [],
   const [versaoBrush, setVersaoBrush] = useState(0);
   const janela = zoom || total;
 
-  const [destaque, setDestaque] = useState("rpm");
+  const [destaque, setDestaque] = useState(sinais.includes("rpm") ? "rpm" : sinais[0]);
   const [cursor, setCursor] = useState(null);
   const [fixado, setFixado] = useState(null);
   const [selecao, setSelecao] = useState(null);
@@ -283,32 +302,55 @@ export function AnaliseGraficos({ serie, eventos, inicio, limites, trechos = [],
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [fixado]);
 
+  // Desmarcar o sinal em destaque passa o destaque ao primeiro que ficou:
+  // senao o botao sumiria e o grafico grande continuaria mostrando ele.
+  function mudarSinais(chaves) {
+    if (!chaves.includes(destaque)) setDestaque(SINAIS.find((x) => chaves.includes(x.campo)).campo);
+    aoMudarSinais(chaves);
+  }
+
+  // Os sinais na tela: os escolhidos e, sempre, o em destaque - ir a um
+  // evento de temperatura poe a temperatura em destaque mesmo fora da
+  // escolha.
+  const mostrados = SINAIS.filter((x) => sinais.includes(x.campo) || x.campo === destaque);
+
   // O que a barra e as trilhas leem: o mouse, ou o ponto fixado sem ele.
   const lido = cursor ?? fixado;
-  const outros = SINAIS.filter((x) => x.campo !== destaque);
+  const outros = mostrados.filter((x) => x.campo !== destaque);
   const eixo = eixos[destaque];
 
   return (
     <div className={s.analise}>
       <div className={s.colunas}>
         <div className={s.principal}>
-          <BarraLeitura serie={serie} cursor={cursor} fixado={fixado} destaque={destaque} />
+          <BarraLeitura serie={serie} cursor={cursor} fixado={fixado} destaque={destaque} sinais={mostrados} />
 
           <section className={`${c.card} ${s.cardGrafico}`} aria-label="Gráfico da sessão">
             <div className={s.cabecalho}>
-              <div className={s.seletor} role="group" aria-label="Sinal em destaque">
-                {SINAIS.map((x) => (
-                  <button
-                    key={x.campo}
-                    type="button"
-                    className={`${s.seletorItem} ${x.campo === destaque ? s.seletorAtivo : ""}`.trim()}
-                    aria-pressed={x.campo === destaque}
-                    onClick={() => setDestaque(x.campo)}
-                  >
-                    <span className={`${s.pontinho} ${COR_SINAL[x.campo]}`} aria-hidden="true" />
-                    {x.nome}
-                  </button>
-                ))}
+              <div className={s.cabecalhoSinais}>
+                <SeletorParametros
+                  rotulo="Sinais"
+                  opcoes={OPCOES_SINAIS}
+                  padrao={SINAIS_PADRAO}
+                  selecionados={sinais}
+                  aoMudar={mudarSinais}
+                  minimo={1}
+                  compacto
+                />
+                <div className={s.seletor} role="group" aria-label="Sinal em destaque">
+                  {mostrados.map((x) => (
+                    <button
+                      key={x.campo}
+                      type="button"
+                      className={`${s.seletorItem} ${x.campo === destaque ? s.seletorAtivo : ""}`.trim()}
+                      aria-pressed={x.campo === destaque}
+                      onClick={() => setDestaque(x.campo)}
+                    >
+                      <span className={`${s.pontinho} ${COR_SINAL[x.campo]}`} aria-hidden="true" />
+                      {x.nome}
+                    </button>
+                  ))}
+                </div>
               </div>
               <Legenda zonas={zonas} campo={destaque} limites={limites} />
             </div>
@@ -452,11 +494,11 @@ export function AnaliseGraficos({ serie, eventos, inicio, limites, trechos = [],
 /* --------------------------------------------------------- barra de leitura */
 
 /**
- * O instante e os quatro sinais lado a lado, sempre visivel. Com um ponto
+ * O instante e os sinais na tela lado a lado, sempre visivel. Com um ponto
  * fixado (A) e o mouse noutro instante (B): os dois horarios, a diferenca
  * de cada sinal e o tempo entre eles.
  */
-function BarraLeitura({ serie, cursor, fixado, destaque }) {
+function BarraLeitura({ serie, cursor, fixado, destaque, sinais }) {
   const comparando = fixado !== null && cursor !== null && cursor !== fixado;
   const ponto = cursor ?? fixado;
   const a = fixado !== null ? serie[fixado] : null;
@@ -489,7 +531,7 @@ function BarraLeitura({ serie, cursor, fixado, destaque }) {
     <div className={s.leitura} aria-live="off">
       <span className={`${s.leituraInstante} ${c.mono}`}>{instante}</span>
       <span className={s.leituraValores}>
-        {SINAIS.map(({ campo }) => {
+        {sinais.map(({ campo }) => {
           const texto = !b
             ? "—"
             : comparando

@@ -21,6 +21,14 @@
   --chip-neutro: rgba(242, 242, 240, 0.07);
   --segmento-off: rgba(242, 242, 240, 0.09);
 
+  /* Linhas dos sinais extras da Analise. Os quatro de sempre usam ambar,
+     apagado, risco e ok; estes nao repetem nenhum deles. */
+  --serie-azul: #5aa9e6;
+  --serie-ciano: #3cc6b8;
+  --serie-violeta: #a68af0;
+  --serie-rosa: #e879b4;
+  --serie-areia: #d9bf73;
+
   --fonte: "Space Grotesk", "Segoe UI", Inter, system-ui, sans-serif;
   --fonte-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
 

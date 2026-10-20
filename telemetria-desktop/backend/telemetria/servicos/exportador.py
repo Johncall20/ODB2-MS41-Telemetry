@@ -36,6 +36,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from ..modelos import CAMPOS_EXTRAS
 from ..repositorios import amostras as repo_amostras
 from ..repositorios import limites as repo_limites
 from ..repositorios import sessoes as repo_sessoes
@@ -43,6 +44,9 @@ from ..repositorios import veiculos as repo_veiculos
 from . import metricas
 
 COLUNAS = ["rpm", "ect", "iat", "vbat", "tps", "vanos", "vss"]
+# Os extras da MS41 entram so no CSV: na tabela do PDF, dezoito colunas nao
+# cabem numa A4. Sessao gravada antes deles sai com as celulas vazias.
+COLUNAS_CSV = COLUNAS + list(CAMPOS_EXTRAS)
 
 
 # ------------------------------------------------------- nome do arquivo
@@ -230,10 +234,10 @@ def para_csv(sessao_id: int) -> str:
     """CSV da sessao, uma linha por amostra. Campo sem leitura sai vazio."""
     saida = io.StringIO()
     w = csv.writer(saida)
-    w.writerow(["recebida_em", "t_ms"] + COLUNAS + ["valid"])
+    w.writerow(["recebida_em", "t_ms"] + COLUNAS_CSV + ["valid"])
     for a in repo_amostras.listar(sessao_id):
         linha = [a.recebida_em.isoformat(timespec="milliseconds"), a.t_ms]
-        for c in COLUNAS:
+        for c in COLUNAS_CSV:
             linha.append(getattr(a, c) if a.valido(c) else "")
         linha.append(a.valid)
         w.writerow(linha)

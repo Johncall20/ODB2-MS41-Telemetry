@@ -16,12 +16,12 @@ import random
 import time
 from typing import Awaitable, Callable, Optional
 
-from ..modelos import EstadoLeitor, PerfilEcu, VALID_COMPLETO
+from ..modelos import BITS_EXTRAS, CAMPOS_EXTRAS, EstadoLeitor, PerfilEcu, VALID_COMPLETO
 
 NUS_TX_CHAR = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 NOME_PADRAO = "E36-DS2"
 
-CamposEsperados = ("t", "rpm", "ect", "iat", "vbat", "tps", "vanos", "vss", "valid")
+CamposEsperados = ("t", "rpm", "ect", "iat", "vbat", "tps", "vanos", "vss", *CAMPOS_EXTRAS, "valid")
 
 RetornoLeitura = Callable[[dict], Awaitable[None]]
 RetornoEstado = Callable[[EstadoLeitor, str], Awaitable[None]]
@@ -115,6 +115,9 @@ def decodificar(linha: str) -> Optional[dict]:
         "tps": float(d.get("tps", 0.0)),
         "vanos": float(d.get("vanos", 0.0)),
         "vss": int(d.get("vss", 0)),
+        # Os extras da MS41: firmware antigo nao manda, e ai ficam None -
+        # o bit deles em `valid` tambem vem apagado.
+        **{c: float(d[c]) if c in d else None for c in CAMPOS_EXTRAS},
         "valid": int(d.get("valid", 0)),
     }
 
@@ -280,9 +283,27 @@ class LeitorSimulado(LeitorBase):
             vbat = 13.9 - (rpm > 5000) * 0.25 + random.uniform(-0.06, 0.06)
             iat = 28 + math.sin(t / 30.0) * 3
 
-            valid = VALID_COMPLETO
+            # Extras da MS41, puxados pelo giro e pela borboleta. So
+            # precisam parecer de carro, nao bater com um M50 de verdade.
+            carga = 0.25 + 0.75 * tps / 100.0
+            maf = 12 + (rpm / 7000.0) * carga * 600 + random.uniform(-2, 2)
+            extras = {
+                "load": round(130 + carga * 480 + random.uniform(-5, 5), 1),
+                "maf": round(maf, 1),
+                "mafv": round(min(5.0, 0.9 + maf / 180.0), 2),
+                "knock": round(-random.choice([1.5, 3.0]) if tps > 80 and random.random() < 0.1 else 0.0, 1),
+                "ign": round(12 + min(rpm, 4500) / 4500 * 22 - tps * 0.08 + random.uniform(-0.5, 0.5), 1),
+                "inj": round(2.4 + carga * 9 + random.uniform(-0.1, 0.1), 2),
+                "iacv": round(max(0.0, 28 - (rpm - 750) / 100.0) + random.uniform(-0.5, 0.5), 1),
+                "lint1": round(random.uniform(-4, 4), 1),
+                "lint2": round(random.uniform(-4, 4), 1),
+                "lam1": round(0.5 + 0.4 * math.sin(t * 2.1), 2),
+                "lam2": round(0.5 + 0.4 * math.sin(t * 1.9 + 1.0), 2),
+            }
+
+            valid = VALID_COMPLETO | sum(BITS_EXTRAS.values())
             if random.random() < 0.06:            # a central deixa de responder um campo
-                valid &= ~random.choice([0x04, 0x08, 0x40])
+                valid &= ~random.choice([0x04, 0x08, 0x40, BITS_EXTRAS["maf"], BITS_EXTRAS["lam2"]])
 
             await self._ao_ler(
                 {
@@ -294,6 +315,7 @@ class LeitorSimulado(LeitorBase):
                     "tps": round(tps, 1),
                     "vanos": round(vanos, 1),
                     "vss": vss,
+                    **extras,
                     "valid": valid,
                 }
             )
