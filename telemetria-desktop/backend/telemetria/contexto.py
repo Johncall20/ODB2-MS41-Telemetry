@@ -16,6 +16,7 @@ from .servicos.leitor import (
     NOME_PADRAO,
     LeitorBase,
     LeitorBLE,
+    LeitorReplay,
     LeitorSimulado,
     compatibilidade_do_perfil,
 )
@@ -26,6 +27,9 @@ class Contexto:
         padrao_sim = os.environ.get("TELEMETRIA_FONTE", "ble").lower() == "sim"
         self.usar_simulador = padrao_sim if usar_simulador is None else usar_simulador
         self.nome_ble = nome_ble or os.environ.get("TELEMETRIA_NOME_BLE", NOME_PADRAO)
+        # Com URL, a fonte e o replay.py tocando uma gravacao; conta como
+        # simulador (nao le central nenhuma).
+        self.url_replay: Optional[str] = None
 
         self.hub = Hub()
         self.gravador = Gravador(self.hub)
@@ -35,11 +39,12 @@ class Contexto:
         # dizer que viu: a tela do Ao vivo avisa que foram interrompidas.
         self.interrompidas: list[dict] = []
 
-    def configurar(self, *, usar_simulador: bool, nome_ble: str) -> None:
+    def configurar(self, *, usar_simulador: bool, nome_ble: str, url_replay: Optional[str] = None) -> None:
         """Aplica o que veio da linha de comando. So vale antes de iniciar:
         trocar a fonte com o leitor rodando nao faria sentido."""
-        self.usar_simulador = usar_simulador
+        self.usar_simulador = usar_simulador or url_replay is not None
         self.nome_ble = nome_ble
+        self.url_replay = url_replay
 
     @property
     def fonte(self) -> str:
@@ -64,10 +69,13 @@ class Contexto:
 
     async def iniciar(self) -> None:
         """Cria a fonte escolhida e poe leitor e gravador para rodar."""
-        Classe = LeitorSimulado if self.usar_simulador else LeitorBLE
-        self.leitor = Classe(self.gravador.receber, self.gravador.ao_mudar_estado)
-        if not self.usar_simulador:
-            self.leitor.nome = self.nome_ble
+        retornos = (self.gravador.receber, self.gravador.ao_mudar_estado)
+        if self.url_replay:
+            self.leitor = LeitorReplay(*retornos, url=self.url_replay)
+        elif self.usar_simulador:
+            self.leitor = LeitorSimulado(*retornos)
+        else:
+            self.leitor = LeitorBLE(*retornos, nome=self.nome_ble)
         self.gravador.iniciar_flush()
         await self.leitor.iniciar()
 

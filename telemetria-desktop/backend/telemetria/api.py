@@ -28,6 +28,7 @@ from .rotas import veiculos as rotas_veiculos
 from .rotas import websocket as rotas_websocket
 from .servicos import catalogo as servico_catalogo
 from .servicos import consolidacao
+from .servicos.leitor import URL_REPLAY_PADRAO
 
 log = logging.getLogger("telemetria.api")
 
@@ -300,6 +301,16 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Backend da telemetria DS2/MS41")
     p.add_argument("--sim", action="store_true", help="usa a fonte simulada em vez do BLE")
     p.add_argument(
+        "--replay",
+        nargs="?",
+        const=URL_REPLAY_PADRAO,
+        metavar="URL",
+        help=(
+            "le o /data do replay.py (Aplicativo-DS2-MS41), sincronizado com o painel "
+            f"da ESP que ele serve. Sem URL, {URL_REPLAY_PADRAO}"
+        ),
+    )
+    p.add_argument(
         "--nome", default=app.state.contexto.nome_ble, help="nome anunciado pelo ESP32"
     )
     p.add_argument("--porta", type=int, default=8000)
@@ -340,7 +351,7 @@ def main() -> None:
         _carregar_catalogo(args.carregar_catalogo)
         return
 
-    app.state.contexto.configurar(usar_simulador=args.sim, nome_ble=args.nome)
+    app.state.contexto.configurar(usar_simulador=args.sim, nome_ble=args.nome, url_replay=args.replay)
 
     # O log do app (o traceback do erro interno, entre outros) no terminal,
     # com hora e origem, ao lado do log do uvicorn.

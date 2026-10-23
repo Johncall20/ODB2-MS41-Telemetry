@@ -1,5 +1,6 @@
 """
-De onde vem a telemetria: LeitorBLE (ESP32-C3 real) e LeitorSimulado.
+De onde vem a telemetria: LeitorBLE (ESP32-C3 real), LeitorSimulado e
+LeitorReplay (o replay.py do Aplicativo-DS2-MS41 tocando uma gravacao).
 Mexe aqui quem for falar com outro hardware ou mudar o simulador.
 
 O firmware so empurra - nao aceita comando, entao a interface e por
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import os
 import random
@@ -20,6 +22,7 @@ from ..modelos import BITS_EXTRAS, CAMPOS_EXTRAS, EstadoLeitor, PerfilEcu, VALID
 
 NUS_TX_CHAR = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 NOME_PADRAO = "E36-DS2"
+URL_REPLAY_PADRAO = "http://127.0.0.1:8080/data"
 
 CamposEsperados = ("t", "rpm", "ect", "iat", "vbat", "tps", "vanos", "vss", *CAMPOS_EXTRAS, "valid")
 
@@ -320,3 +323,53 @@ class LeitorSimulado(LeitorBase):
                 }
             )
             await asyncio.sleep(self.periodo)
+
+
+class LeitorReplay(LeitorBase):
+    """Uma gravacao tocada pelo `replay.py` (Aplicativo-DS2-MS41).
+
+    Le o mesmo /data que o painel da ESP servido pelo replay le, no mesmo
+    ritmo (5x/s): o relogio e um so, o do replay, entao a pagina e esta
+    tela mostram a mesma amostra ao mesmo tempo. O /data devolve a linha
+    no formato do firmware, e por isso passa pelo mesmo `decodificar` do
+    BLE. Replay fora do ar e tratado como o modulo sumido: PROCURANDO e
+    tenta de novo.
+
+    Serve tambem para o `simulador.py` do mesmo projeto, que poe o
+    LeitorSimulado atras de um /data igual. Ele muda a leitura mais devagar
+    do que esta tela pergunta, entao amostra com o mesmo `t` e a mesma
+    leitura repetida, e nao entra duas vezes.
+    """
+
+    def __init__(self, ao_ler, ao_mudar_estado, url: str = URL_REPLAY_PADRAO, hz: float = 5.0):
+        super().__init__(ao_ler, ao_mudar_estado)
+        self.url = url
+        self.periodo = 1.0 / hz
+
+    async def _laco(self) -> None:
+        import httpx
+
+        # Sem isto o httpx loga cada GET, 5 linhas por segundo no terminal.
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
+        ultimo_t: Optional[int] = None
+        async with httpx.AsyncClient(timeout=2.0) as cliente:
+            while True:
+                inicio = time.monotonic()
+                try:
+                    resposta = await cliente.get(self.url)
+                    resposta.raise_for_status()
+                    leitura = decodificar(resposta.text)
+                    await self._definir_estado(EstadoLeitor.CONECTADO, f"lendo {self.url}")
+                    if leitura and leitura["t_ms"] != ultimo_t:
+                        ultimo_t = leitura["t_ms"]
+                        await self._ao_ler(leitura)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    await self._definir_estado(
+                        EstadoLeitor.PROCURANDO, f"{self.url} não respondeu, tentando de novo"
+                    )
+                    await asyncio.sleep(2)
+                    continue
+                await asyncio.sleep(max(0.0, self.periodo - (time.monotonic() - inicio)))

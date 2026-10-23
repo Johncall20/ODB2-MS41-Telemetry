@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(docker exec telemetria-desktop-postgres-1 psql -U telemetria -d telemetria -c \"CREATE DATABASE telemetria_seed OWNER telemetria;\")",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\Administrator\\\\Documents\\\\projects\\\\ODB2-MS41-Telemetry\\\\telemetria-desktop\\\\backend\"; $env:DATABASE_URL=\"postgresql+psycopg://telemetria:telemetria@localhost:5432/telemetria_seed\"; .\\\\.venv\\\\Scripts\\\\python.exe executar.py --sim --porta 8000)",
+      "PowerShell($r = Invoke-WebRequest -Uri \"http://127.0.0.1:8000/\" -UseBasicParsing; \"GET / -> $\\($r.StatusCode\\) $\\($r.Content.Length\\) bytes\"; $s = Invoke-WebRequest -Uri \"http://127.0.0.1:8000/api/auth/sessao\" -UseBasicParsing -SkipHttpErrorCheck; \"GET /api/auth/sessao -> $\\($s.StatusCode\\)\")"
+    ]
+  }
+}
