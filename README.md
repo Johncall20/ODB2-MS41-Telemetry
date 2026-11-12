@@ -1,209 +1,219 @@
-# OBD2 + MS41 Telemetry
+# Telemetria MS41
 
-> Sistema embarcado de baixo custo para leitura e monitoramento de parâmetros automotivos em tempo real.
+> App desktop para ler, gravar e analisar em tempo real os dados do motor de carros com ECU Siemens MS41 (BMW E36).
 
 ![Python](https://img.shields.io/badge/Python-3-blue?logo=python&logoColor=white)
-![JavaScript](https://img.shields.io/badge/JavaScript-ES6-yellow?logo=javascript&logoColor=black)
-![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-Zero%20-C51A4A?logo=raspberrypi&logoColor=white)
-![BLE](https://img.shields.io/badge/Bluetooth-LE-0082FC?logo=bluetooth&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![ESP32](https://img.shields.io/badge/ESP32--C3-BLE-E7352C?logo=espressif&logoColor=white)
 
 Trabalho de Conclusão de Curso (TCC) do curso de Ciência da Computação do **Centro Universitário do Instituto Mauá de Tecnologia (IMT)**.
 
 ---
 
-##  Sumário
+## Sumário
 
-- [Visão Geral](#-visão-geral)
-- [Objetivos](#-objetivos)
-- [Funcionalidades Principais](#-funcionalidades-principais)
-- [Parâmetros Monitorados](#-parâmetros-monitorados)
-- [Tecnologias Utilizadas](#️-tecnologias-utilizadas)
-- [Hardware Necessário](#-hardware-necessário)
-- [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Como Rodar](#-como-rodar)
-- [Variáveis de Ambiente](#️-variáveis-de-ambiente)
-- [Interface de Visualização](#-interface-de-visualização-front-end)
-- [Funcionamento](#️-funcionamento)
-- [Estado do Projeto](#-estado-do-projeto)
-- [Equipe](#-equipe)
+- [Visão geral](#visão-geral)
+- [Como funciona](#como-funciona)
+- [Funcionalidades](#funcionalidades)
+- [Parâmetros lidos](#parâmetros-lidos)
+- [Tecnologias](#tecnologias)
+- [Estrutura do repositório](#estrutura-do-repositório)
+- [Como rodar](#como-rodar)
+- [Opções de linha de comando](#opções-de-linha-de-comando)
+- [Documentação](#documentação)
+- [Limitações conhecidas](#limitações-conhecidas)
+- [Equipe](#equipe)
 
 ---
 
-##  Visão Geral
+## Visão geral
 
-Este projeto realiza a comunicação com a unidade de controle eletrônico (ECU) de um veículo por meio de um adaptador **ELM327** conectado ao conector **OBD-II**. Uma placa **Raspberry Pi Zero W** atua como unidade de processamento embarcada: conecta-se ao adaptador via *Bluetooth Low Energy* (BLE), requisita os parâmetros do motor utilizando os PIDs do padrão OBD-II (norma **SAE J1979**), converte os dados recebidos em unidades de engenharia e os disponibiliza para visualização em tempo real.
+Um módulo **ESP32-C3** ligado ao carro lê a ECU **Siemens MS41** pelo protocolo proprietário **DS2** da BMW (via K-Line) e publica as leituras por **Bluetooth LE**. O app desktop recebe essas leituras, mostra tudo ao vivo, grava sessões no banco e oferece análise, comparação e exportação.
 
-> **Etapa atual:** validação da comunicação por meio do padrão OBD-II.
-> **Próxima etapa:** comunicação com a ECU **Siemens MS41** de veículos BMW utilizando o protocolo proprietário **DS2**.
+O app atende dois perfis de uso:
 
----
+| Papel | Quem é | O que muda |
+|---|---|---|
+| **Profissional** | Mecânico ou preparador | Cadastra clientes e os carros deles |
+| **Particular** | Dono do carro | Cadastra os próprios carros, sem tela de clientes |
 
-##  Objetivos
-
-- Estabelecer comunicação com a ECU de um veículo utilizando hardware de baixo custo.
-- Realizar a leitura e a interpretação de parâmetros do motor em tempo real.
-- Disponibilizar os dados lidos em uma interface de visualização acessível em rede.
-- Estruturar a base técnica para a futura comunicação com a ECU Siemens MS41 via protocolo DS2.
+O firmware do ESP32 fica no repositório [`Aplicativo-DS2-MS41`](https://github.com/Johncall20/Aplicativo-DS2-MS41).
 
 ---
 
-##  Funcionalidades Principais
+## Como funciona
 
-- Conexão automática com o adaptador ELM327 via *Bluetooth Low Energy*.
-- Inicialização automática do adaptador e detecção do protocolo de comunicação.
-- Leitura cíclica dos parâmetros do motor em tempo real.
-- Conversão dos dados brutos da ECU em unidades de engenharia.
-- Mecanismo adaptativo de controle do intervalo entre requisições, aumentando a estabilidade da comunicação.
+```
+ECU MS41 ──DS2/K-Line──▶ ESP32-C3 ──Bluetooth LE──▶ Backend (FastAPI) ──WebSocket──▶ Interface (React)
+                                                          │
+                                                     PostgreSQL
+```
 
----
+1. O `LeitorBLE` encontra o módulo pelo nome (`E36-DS2`), assina as notificações e reconecta sozinho se a conexão cair.
+2. Cada linha JSON do firmware vira um dicionário e chega ao `Gravador`.
+3. O `Gravador` manda a leitura para a tela pelo WebSocket `/ws`. Se houver gravação em curso, também grava a amostra e passa pelo `DetectorEventos`, que compara com os limites da sessão.
+4. A interface (`TelemetriaProvider` → `useTelemetria()` → `AoVivo`) atualiza cards, gráficos e alertas.
 
-##  Parâmetros Monitorados
-
-| Parâmetro | PID | Fórmula de conversão |
-|---|:---:|---|
-| Rotação do motor (RPM) | `010C` | `((A × 256) + B) / 4` |
-| Velocidade do veículo (km/h) | `010D` | `A` |
-| Temperatura do líquido de arrefecimento (°C) | `0105` | `A − 40` |
-| Temperatura do ar de admissão (°C) | `010F` | `A − 40` |
-| Pressão no coletor de admissão (kPa) | `010B` | `A` |
-| Posição da borboleta (%) | `0111` | `A × 100 / 255` |
-| Razão lambda e AFR | `0144` | `lambda = ((A × 256) + B) / 32768`<br>`AFR = lambda × 14.7` |
-
-> Os parâmetros acima são lidos diretamente da ECU por meio dos PIDs do padrão OBD-II. A interface de visualização exibe ainda campos adicionais (como **pressão de óleo**, **pressão de combustível**, **avanço de ignição** e **tensão da bateria**) que, nesta etapa do projeto, são apresentados de forma estimada ou parcial, estando prevista sua leitura completa nas fases seguintes do trabalho.
+O leitor roda o tempo todo: a tela ao vivo funciona mesmo sem sessão gravando.
 
 ---
 
-##  Tecnologias Utilizadas
+## Funcionalidades
+
+- **Conta:** cadastro e login com dois papéis, edição de perfil e senha, exportação dos próprios dados e exclusão da conta
+- **Clientes** (Profissional): cadastrar, editar, arquivar e restaurar
+- **Veículos:** marca e modelo pelo catálogo FIPE (com modelo customizado), validação de anos e placa, combustível, câmbio e perfil da ECU
+- **Ao vivo:** parâmetros em tempo real, estado do módulo e indicação de quais campos a ECU não respondeu
+- **Gravação:** sessão com seis limites de alerta (pré-preenchidos da última sessão do carro), km e notas
+- **Eventos:** shift light, RPM alto, temperatura alta, bateria baixa, perda de conexão e leitura incompleta
+- **Análise:** gráficos da sessão com eventos marcados, trechos sem leitura e métricas
+- **Exportação:** CSV, JSON e PDF (com seções escolhidas)
+- **Relatórios:** frota, evolução, eventos e comparação entre duas sessões
+
+---
+
+## Parâmetros lidos
+
+| Campo | Parâmetro | Unidade |
+|---|---|---|
+| `rpm` | Rotação do motor | rpm |
+| `vss` | Velocidade | km/h |
+| `ect` | Temperatura do líquido de arrefecimento | °C |
+| `iat` | Temperatura do ar de admissão | °C |
+| `tps` | Posição da borboleta | % |
+| `vbat` | Tensão da bateria | V |
+| `vanos` | Posição do VANOS | °CRK |
+
+Firmwares mais novos também enviam os extras da MS41: carga (`load`), MAF, sonda de detonação (`knock`), avanço de ignição (`ign`), tempo de injeção (`inj`), válvula de marcha lenta (`iacv`), integradores e sondas lambda dos dois bancos.
+
+Cada leitura traz um bitmask `valid` que diz quais campos a ECU respondeu naquele ciclo. Campo sem resposta aparece apagado na tela e não entra nos cálculos.
+
+---
+
+## Tecnologias
 
 | Camada | Stack |
 |---|---|
-| Linguagens | Python 3 (back-end) · JavaScript (front-end) |
-| Comunicação BLE | [`bleak`](https://github.com/hbldh/bleak) |
-| Servidor HTTP / WebSocket | [`aiohttp`](https://docs.aiohttp.org/) |
-| Programação assíncrona | `asyncio` (biblioteca padrão) |
-| Interface web | HTML, CSS e JavaScript puros (sem framework), com *gauge* desenhado em SVG |
-| Hardware | Raspberry Pi Zero W + adaptador ELM327 Bluetooth |
+| Módulo | ESP32-C3, protocolo DS2 (K-Line), Bluetooth LE (Nordic UART) |
+| Backend | Python 3, FastAPI, Uvicorn, [`bleak`](https://github.com/hbldh/bleak), SQLModel |
+| Banco | PostgreSQL 16 (Docker), migrações com Alembic |
+| Frontend | React 18, Vite, Recharts |
+| Relatórios | ReportLab e Matplotlib (PDF) |
+| Segurança | Argon2 para senhas, token opaco em cookie com validade de 12 h |
 
 ---
 
-##  Hardware Necessário
-
-- Raspberry Pi Zero (ou outra placa com suporte a *Bluetooth Low Energy*)
-- Adaptador ELM327 com comunicação Bluetooth
-- Veículo com conector OBD-II
-
----
-
-##  Estrutura do Projeto
+## Estrutura do repositório
 
 ```
-.
-├── Arquivos/                 # Diagramas em PDF
-├── server/
-│   ├── main.py               # Servidor: leitura BLE + HTTP + WebSocket
-│   └── requirements.txt      # Dependências do servidor
-└── web/
-    └── dist/                 # Interface web (dashboard)
-        ├── index.html
-        ├── css/
-        └── js/
+telemetria-desktop/
+├── docker-compose.yml        # sobe o PostgreSQL
+├── backend/
+│   ├── executar.py           # ponto de entrada
+│   ├── alembic.ini
+│   ├── migracoes/            # migrações do banco (Alembic)
+│   ├── semear.py             # gera um banco de demonstração
+│   └── telemetria/
+│       ├── api.py            # app FastAPI e linha de comando
+│       ├── contexto.py       # liga leitor, gravador e hub
+│       ├── modelos/          # tabelas (Usuario, Cliente, Veiculo, Sessao, Amostra, Evento...)
+│       ├── repositorios/     # todo acesso ao banco
+│       ├── servicos/         # leitor BLE, gravador, detector, métricas, exportação
+│       └── rotas/            # rotas HTTP e WebSocket
+└── frontend/
+    └── src/
+        ├── paginas/          # telas (AoVivo, Sessoes, Analise, Veiculos...)
+        ├── componentes/
+        └── hooks/            # TelemetriaProvider, useTelemetria, autenticação
+Arquivos/                     # diagramas e documentos do TCC
 ```
-
-O projeto possui **dois modos de uso**:
-
-- **`server/main.py`** — ealiza a leitura dos parâmetros e integra ao servidor web e ao *streaming* de dados em tempo real para a interface de visualização.
 
 ---
 
-##  Como Rodar
+## Como rodar
 
-Para executar o sistema, com a interface de visualização em tempo real, instale as dependências do servidor:
+**Pré-requisitos:** Python 3.10+, Node 18+, Docker e um adaptador Bluetooth no PC.
+
+**1. Banco de dados**
 
 ```bash
-pip install -r server/requirements.txt
+cd telemetria-desktop
+docker compose up -d
 ```
 
-Conecte o adaptador ELM327 ao conector OBD-II do veículo e ligue a ignição. Por padrão, o sistema procura automaticamente um dispositivo Bluetooth com o nome `OBDII`. Caso o seu adaptador utilize outro nome — ou caso queira informar diretamente o endereço MAC do adaptador, evitando a etapa de busca — defina as variáveis de ambiente antes de executar:
+**2. Backend**
 
 ```bash
-export ELM_NAME="OBDII"
-export ELM_MAC="00:00:00:00:00:00"
+cd backend
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+alembic upgrade head             # passo manual: o app não migra o banco sozinho
+                                 # (a migração já carrega o catálogo de marcas e modelos)
 ```
 
-Em seguida, inicie o servidor:
+**3. Frontend**
 
 ```bash
-python server/main.py
+cd ../frontend
+npm install
+npm run build                    # o backend serve o dist/
 ```
 
-Ao ser iniciado, o servidor localiza o adaptador, estabelece a conexão Bluetooth, realiza a inicialização do ELM327 e começa a transmitir os dados. A interface web fica disponível na porta `3000` (configurável pela variável `HTTP_PORT`).
+**4. Subir o app**
 
-Para visualizar o dashboard, conecte o dispositivo cliente (computador, *tablet* ou celular) à mesma rede da Raspberry Pi e acesse, pelo navegador:
-
+```bash
+cd ../backend
+python executar.py               # com o módulo ESP32
+python executar.py --sim         # sem o carro, com dados simulados
 ```
-http://<IP-DA-RASPBERRY>:3000
-```
 
-A interface conecta-se automaticamente ao servidor por WebSocket e passa a exibir os parâmetros do motor em tempo real. Caso a conexão com o servidor seja interrompida, a interface entra em um modo de demonstração com dados simulados e tenta reconectar automaticamente.
+Abra `http://127.0.0.1:8000`.
 
----
+Para desenvolver o frontend com recarga automática, rode `npm run dev` na pasta `frontend` e abra `http://localhost:5173` (o Vite repassa as chamadas para o backend).
 
-## Variáveis de Ambiente
-
-Todas opcionais, com valores padrão definidos no código.
-
-| Variável | Padrão | Descrição |
-|---|:---:|---|
-| `ELM_NAME` | `OBDII` | Nome do dispositivo Bluetooth a ser procurado |
-| `ELM_MAC` | *(vazio)* | Endereço MAC do adaptador (evita a busca por nome) |
-| `SEND_DELAY_MS` | `8` | Atraso após o envio de um comando |
-| `CMD_TIMEOUT_MS` | `700` | Tempo máximo de espera por uma resposta |
-| `IDLE_DETECT_MS` | `90` | Tempo de inatividade para considerar a resposta concluída |
-| `MIN_CMD_GAP_MS` | `30` | Intervalo mínimo entre comandos |
-| `MAX_CMD_GAP_MS` | `90` | Intervalo máximo entre comandos |
-| `MIN_RX_BEFORE_IDLE` | `18` | Quantidade mínima de dados antes da detecção de inatividade |
-| `HTTP_HOST` | `0.0.0.0` | Endereço de escuta do servidor web |
-| `HTTP_PORT` | `3000` | Porta do servidor web e do WebSocket |
+A conexão com o banco usa `DATABASE_URL`. O padrão é `postgresql+psycopg://telemetria:telemetria@localhost:5432/telemetria`, que bate com o `docker-compose.yml`.
 
 ---
 
-##  Interface de Visualização (Front-end)
+## Opções de linha de comando
 
-A interface de visualização é uma aplicação web composta por **HTML, CSS e JavaScript puros**, sem dependência de *frameworks*, localizada em `web/dist`. Ela é servida pelo próprio servidor (`server/main.py`) e acessada por um navegador em um dispositivo conectado à mesma rede da Raspberry Pi.
-
-A comunicação entre a interface e o servidor ocorre por meio de um **WebSocket**, pelo qual os dados de telemetria são transmitidos continuamente. A tela apresenta um indicador principal de rotação do motor, desenhado em **SVG**, e um conjunto de campos com os demais parâmetros monitorados. Caso a conexão com o servidor seja perdida, a interface passa a exibir dados simulados e tenta restabelecer a conexão automaticamente.
-
-> Por se tratar de uma aplicação estática, **não é necessária nenhuma etapa de compilação**: basta que o servidor esteja em execução e que o dispositivo cliente acesse o endereço indicado na seção [Como Rodar](#-como-rodar).
-
----
-
-## Funcionamento
-
-O sistema opera em **duas etapas principais**:
-
-**1. Inicialização**
-Uma sequência de comandos `AT` é enviada ao adaptador ELM327 para configurá-lo e selecionar automaticamente o protocolo de comunicação do veículo. A comunicação é validada pela resposta ao comando `0100`, que indica os PIDs suportados pela central.
-
-**2. Leitura contínua**
-Após a inicialização, o sistema entra em um laço no qual cada parâmetro é requisitado por meio do seu respectivo PID. A resposta hexadecimal retornada pela ECU é interpretada, os bytes de dados úteis são extraídos e as fórmulas de conversão são aplicadas, resultando nos valores em unidades de engenharia.
-
-Para aumentar a robustez da comunicação, o sistema implementa um **mecanismo de intervalo adaptativo** entre comandos: quando uma resposta inválida é detectada, o intervalo entre as requisições é ampliado; quando as respostas são consistentes, o intervalo é progressivamente reduzido, equilibrando a estabilidade da comunicação com a taxa de atualização dos dados.
+| Opção | O que faz |
+|---|---|
+| `--sim` | Usa a fonte simulada em vez do Bluetooth |
+| `--replay [URL]` | Lê uma gravação tocada pelo `replay.py` do repositório do firmware |
+| `--nome NOME` | Nome anunciado pelo ESP32 (padrão `E36-DS2`) |
+| `--porta N` | Porta do servidor (padrão `8000`) |
+| `--host H` | Endereço de escuta (padrão `127.0.0.1`; use `0.0.0.0` para abrir no celular pela rede local) |
+| `--recalcular [pendentes\|tudo]` | Recalcula os resumos das sessões gravadas e sai |
+| `--carregar-catalogo [ARQUIVO]` | Recarrega marcas e modelos do `catalogo_veiculos.json` (só insere o que falta) e sai |
 
 ---
 
-##  Estado do Projeto
+## Documentação
 
-O projeto encontra-se em desenvolvimento. A leitura dos parâmetros via padrão OBD-II já está funcional. As etapas planejadas para a continuidade incluem:
+Os diagramas do projeto estão em `Arquivos/`:
 
-- [x] Leitura de parâmetros via padrão OBD-II
-- [ ] Implementação da comunicação com a ECU **Siemens MS41** por meio do protocolo proprietário **DS2**
-- [ ] Refatoração do sistema para o paradigma de **programação orientada a objetos**, conforme o diagrama de classes do projeto
-- [ ] Desenvolvimento de uma aplicação com **banco de dados, autenticação de usuários e CRUD**, permitindo o armazenamento e a consulta do histórico de dados do veículo
-- [ ] Integração de uma **interface gráfica dedicada** à placa embarcada
+- Diagrama de classes
+- Diagrama de casos de uso
+- Fluxo de processos (BPMN)
+- Fluxo do dado ao vivo
+- Requisitos e histórias de usuário
 
 ---
 
-##  Equipe
+## Limitações conhecidas
+
+- Leitura e limpeza de códigos de erro (DTC) não são suportadas: o firmware só publica dados, não aceita comandos.
+- O módulo lê apenas a Siemens MS41. Carro cadastrado com outro perfil de ECU não grava com o Bluetooth.
+- A interface foi feita para desktop; no celular ela abre pelo navegador, mas não é otimizada para tela pequena.
+- Não há estimativa de marcha: as métricas são calculadas a partir dos dados lidos.
+
+---
+
+## Equipe
 
 - **Henrique Ricardo Akamoto**
 - **João Victor de Oliveira Borges**
@@ -211,4 +221,4 @@ O projeto encontra-se em desenvolvimento. A leitura dos parâmetros via padrão 
 
 ---
 
-<sub>Centro Universitário do Instituto Mauá de Tecnologia (IMT) — Ciência da Computação · Trabalho de Conclusão de Curso</sub>
+<sub>Centro Universitário do Instituto Mauá de Tecnologia (IMT) - Ciência da Computação · Trabalho de Conclusão de Curso</sub>
